@@ -1,0 +1,50 @@
+import { Bell, Search, Menu, Moon, Sun, Shield } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { useStore } from '@/store/useStore'
+
+export function AdminHeader() {
+  const { sidebarOpen, setSidebarOpen, darkMode, toggleDarkMode } = useStore()
+
+  return (
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background px-6">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        className="lg:hidden"
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+
+      <div className="flex-1">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search merchants, transactions..."
+            className="pl-10"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mr-4">
+          <Shield className="h-5 w-5 text-red-500" />
+          <span className="text-sm font-medium">Admin Panel</span>
+        </div>
+
+        <Button variant="ghost" size="icon" className="relative">
+          <Bell className="h-5 w-5" />
+          <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
+        </Button>
+
+        <Button variant="ghost" size="icon" onClick={toggleDarkMode}>
+          {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        </Button>
+
+        <div className="h-8 w-8 rounded-full bg-gradient-to-r from-red-600 to-orange-600" />
+      </div>
+    </header>
+  )
+}

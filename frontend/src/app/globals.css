@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 204 75% 98%;
+    --foreground: 204 59% 24%;
+    --card: 0 0% 100%;
+    --card-foreground: 204 59% 24%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 204 59% 24%;
+    --primary: 204 38% 47%;
+    --primary-foreground: 204 75% 98%;
+    --secondary: 204 52% 80%;
+    --secondary-foreground: 204 59% 24%;
+    --muted: 204 52% 80%;
+    --muted-foreground: 204 38% 47%;
+    --accent: 204 52% 80%;
+    --accent-foreground: 204 59% 24%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 204 75% 98%;
+    --border: 204 52% 80%;
+    --input: 204 52% 80%;
+    --ring: 204 38% 47%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 204 59% 24%;
+    --foreground: 204 75% 98%;
+    --card: 204 59% 24%;
+    --card-foreground: 204 75% 98%;
+    --popover: 204 59% 24%;
+    --popover-foreground: 204 75% 98%;
+    --primary: 204 52% 80%;
+    --primary-foreground: 204 59% 24%;
+    --secondary: 204 38% 47%;
+    --secondary-foreground: 204 75% 98%;
+    --muted: 204 38% 47%;
+    --muted-foreground: 204 52% 80%;
+    --accent: 204 38% 47%;
+    --accent-foreground: 204 75% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 204 75% 98%;
+    --border: 204 38% 47%;
+    --input: 204 38% 47%;
+    --ring: 204 52% 80%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20;
+  }
+  
+  .glass-dark {
+    @apply bg-black/10 backdrop-blur-lg border border-black/20;
+  }
+  
+  .gradient-primary {
+    @apply bg-gradient-to-r from-[#4A7FA7] to-[#1A3D63];
+  }
+  
+  .gradient-secondary {
+    @apply bg-gradient-to-r from-[#B3CFE5] to-[#4A7FA7];
+  }
+  
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#4A7FA7] to-[#1A3D63];
+  }
+
+  .transform-style-3d {
+    transform-style: preserve-3d;
+  }
+
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+
+  .perspective-scene {
+    perspective: 1200px;
+    transform-style: preserve-3d;
+  }
+
+  .animate-float-slow {
+    animation: float-slow 7s ease-in-out infinite;
+  }
+
+  .animate-float-slow-delayed {
+    animation: float-slow 9s ease-in-out infinite 1.5s;
+  }
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(8px, -14px, 20px) scale(1.08);
+  }
+}
