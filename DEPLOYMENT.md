@@ -1,6 +1,6 @@
-# SalonePay Deployment Guide
+# PayMi Deployment Guide
 
-This guide covers deploying both the frontend and backend of SalonePay to production.
+This guide covers deploying both the frontend and backend of PayMi to production.
 
 ## Table of Contents
 
@@ -76,8 +76,8 @@ This guide covers deploying both the frontend and backend of SalonePay to produc
 
 3. **Clone your repository**
    ```bash
-   git clone https://github.com/your-username/salonepay.git
-   cd salonepay/backend
+   git clone https://github.com/your-username/PayMi.git
+   cd PayMi/backend
    ```
 
 4. **Install and configure**
@@ -92,7 +92,7 @@ This guide covers deploying both the frontend and backend of SalonePay to produc
 5. **Setup PM2 for process management**
    ```bash
    npm install -g pm2
-   pm2 start src/server.js --name salonepay-backend
+   pm2 start src/server.js --name PayMi-backend
    pm2 save
    pm2 startup
    ```
@@ -164,7 +164,7 @@ This guide covers deploying both the frontend and backend of SalonePay to produc
        listen 80;
        server_name yourdomain.com;
 
-       root /path/to/salonepay/frontend/.next;
+       root /path/to/PayMi/frontend/.next;
        
        location / {
            proxy_pass http://localhost:3000;
@@ -180,7 +180,7 @@ This guide covers deploying both the frontend and backend of SalonePay to produc
 3. **Start with PM2**
    ```bash
    cd frontend
-   pm2 start npm --name salonepay-frontend -- start
+   pm2 start npm --name PayMi-frontend -- start
    pm2 save
    ```
 
@@ -303,7 +303,7 @@ Consider integrating:
 ### Backend won't start
 - Check environment variables are set
 - Verify database connection
-- Check logs: `pm2 logs salonepay-backend`
+- Check logs: `pm2 logs PayMi-backend`
 
 ### Frontend build errors
 - Clear Next.js cache: `rm -rf .next`

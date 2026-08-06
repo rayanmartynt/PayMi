@@ -24,6 +24,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use(require('./middleware/sandbox').sandboxMiddleware);
+app.use(require('./middleware/i18n').i18nMiddleware);
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
@@ -55,6 +57,23 @@ app.use('/api/customers/support-tickets', require('./routes/customerSupportTicke
 app.use('/api/customers/withdrawals', require('./routes/customerWithdrawals'));
 app.use('/api/merchants', require('./routes/merchants'));
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/two-factor', require('./routes/twoFactor'));
+app.use('/api/sandbox', require('./routes/sandbox'));
+app.use('/api/analytics', require('./routes/analytics'));
+app.use('/api/subscriptions', require('./routes/subscriptions'));
+app.use('/api/split-payments', require('./routes/splitPayments'));
+app.use('/api/escrow', require('./routes/escrow'));
+app.use('/api/qr-codes', require('./routes/qrCodes'));
+app.use('/api/invoices', require('./routes/invoices'));
+app.use('/api/instant-settlement', require('./routes/instantSettlement'));
+app.use('/api/push-notifications', require('./routes/pushNotifications'));
+app.use('/api/quick-payments', require('./routes/quickPayments'));
+app.use('/api/referrals', require('./routes/referrals'));
+app.use('/api/loyalty', require('./routes/loyalty'));
+app.use('/api/promotions', require('./routes/promotions'));
+app.use('/api/currency', require('./routes/currency'));
+app.use('/api/bulk-payments', require('./routes/bulkPayments'));
+app.use('/api/chatbot', require('./routes/chatbot'));
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/payments', require('./routes/payments'));
 app.use('/api/kyc', require('./routes/kyc'));

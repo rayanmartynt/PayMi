@@ -23,7 +23,7 @@ export default function CareersPage() {
       location: 'Freetown, Sierra Leone',
       type: 'Full-time',
       salary: 'Competitive',
-      description: 'Lead the product strategy for SalonePay. Work closely with engineering and design to deliver world-class payment solutions.'
+      description: 'Lead the product strategy for PayMi. Work closely with engineering and design to deliver world-class payment solutions.'
     },
     {
       title: 'Customer Success Manager',
@@ -55,7 +55,7 @@ export default function CareersPage() {
       location: 'Freetown, Sierra Leone',
       type: 'Full-time',
       salary: 'Competitive',
-      description: 'Ensure SalonePay complies with all regulatory requirements. Manage KYC processes and maintain relationships with regulators.'
+      description: 'Ensure PayMi complies with all regulatory requirements. Manage KYC processes and maintain relationships with regulators.'
     }
   ]
 
@@ -84,7 +84,7 @@ export default function CareersPage() {
 
           <Card className="mb-12">
             <CardHeader>
-              <CardTitle>Why Work at SalonePay?</CardTitle>
+              <CardTitle>Why Work at PayMi?</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground mb-6">

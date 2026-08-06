@@ -15,7 +15,7 @@ const faqs = [
     answer: 'We offer flexible settlement options. Standard settlements are processed within 2-3 business days. Business plan customers can access same-day settlement, while Enterprise customers have access to real-time settlement options.',
   },
   {
-    question: 'Is my data secure with SalonePay?',
+    question: 'Is my data secure with PayMi?',
     answer: 'Absolutely. We are PCI DSS compliant and use 256-bit encryption for all transactions. We also implement advanced fraud detection systems and never store sensitive card information on our servers.',
   },
   {
@@ -23,11 +23,11 @@ const faqs = [
     answer: 'Our pricing is transparent: Starter plan is 1.5% per transaction, Business plan is 1.2% per transaction, and Enterprise plans have custom pricing based on volume. There are no hidden fees or setup charges.',
   },
   {
-    question: 'Do I need a website to use SalonePay?',
+    question: 'Do I need a website to use PayMi?',
     answer: 'No! You can use our payment links and QR codes to accept payments without a website. Simply create a payment link, share it with your customers via WhatsApp, SMS, or email, and start accepting payments immediately.',
   },
   {
-    question: 'How do I integrate SalonePay with my website?',
+    question: 'How do I integrate PayMi with my website?',
     answer: 'We provide a well-documented REST API with SDKs for JavaScript, Python, PHP, and Node.js. Most integrations can be completed in less than a day. We also have a dedicated integration team to help you get started.',
   },
 ]
@@ -52,7 +52,7 @@ export function FAQ() {
             </span>
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Everything you need to know about SalonePay
+            Everything you need to know about PayMi
           </p>
         </motion.div>
 

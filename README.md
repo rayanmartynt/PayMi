@@ -1,4 +1,4 @@
-# SalonePay
+# PayMi
 
 Sierra Leone's premier payment gateway - accept payments via Orange Money, Afrimoney, QMoney, Visa, and Mastercard.
 
@@ -13,8 +13,8 @@ Sierra Leone's premier payment gateway - accept payments via Orange Money, Afrim
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-username/salonepay.git
-   cd salonepay
+   git clone https://github.com/your-username/PayMi.git
+   cd PayMi
    ```
 
 2. **Install dependencies**
@@ -80,7 +80,7 @@ Sierra Leone's premier payment gateway - accept payments via Orange Money, Afrim
 ## 📁 Project Structure
 
 ```
-salonepay/
+PayMi/
 ├── frontend/          # Next.js frontend application
 │   ├── src/
 │   │   ├── app/       # Next.js app router pages
@@ -287,7 +287,7 @@ This project is licensed under the MIT License.
 
 ## 🆘 Support
 
-For support, email support@salonepay.com or open an issue on GitHub.
+For support, email support@PayMi.com or open an issue on GitHub.
 
 ## 🙏 Acknowledgments
 

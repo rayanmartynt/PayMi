@@ -95,10 +95,10 @@ export default function ForgotPasswordPage() {
           transition={{ duration: 0.5 }}
         >
           <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 mb-4">
+          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-gradient-to-r from-green-600 to-blue-600 mb-4">
             <Mail className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
             Forgot Password?
           </h1>
           <p className="text-muted-foreground mt-2">

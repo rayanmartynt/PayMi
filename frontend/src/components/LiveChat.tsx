@@ -29,7 +29,7 @@ export function LiveChat() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: 'Hi! Welcome to SalonePay. How can I help you today?',
+      text: 'Hi! Welcome to PayMi. How can I help you today?',
       sender: 'bot',
       timestamp: new Date()
     }
@@ -77,10 +77,10 @@ export function LiveChat() {
     const lowerInput = userInput.toLowerCase()
 
     if (lowerInput.includes('hello') || lowerInput.includes('hi')) {
-      return 'Hello! How can I assist you with SalonePay today?'
+      return 'Hello! How can I assist you with PayMi today?'
     }
     if (lowerInput.includes('payment') || lowerInput.includes('pay')) {
-      return 'SalonePay supports mobile money payments through Orange Money, Afrimoney, and QMoney. Would you like to know more about our payment options?'
+      return 'PayMi supports mobile money payments through Orange Money, Afrimoney, and QMoney. Would you like to know more about our payment options?'
     }
     if (lowerInput.includes('account') || lowerInput.includes('sign up')) {
       return 'You can create a free account by clicking the "Get Started" button on our homepage. The process takes less than 2 minutes!'
@@ -89,13 +89,13 @@ export function LiveChat() {
       return 'Our transaction fees are very competitive - just 1.5% per transaction for mobile money payments. No hidden fees!'
     }
     if (lowerInput.includes('support') || lowerInput.includes('help')) {
-      return 'Our support team is available Monday-Friday 9AM-6PM. You can also email us at support@salonepay.com for assistance.'
+      return 'Our support team is available Monday-Friday 9AM-6PM. You can also email us at support@PayMi.com for assistance.'
     }
     if (lowerInput.includes('api') || lowerInput.includes('integration')) {
       return 'We offer a well-documented REST API for easy integration. Check out our API documentation for more details!'
     }
     if (lowerInput.includes('security') || lowerInput.includes('safe')) {
-      return 'SalonePay uses bank-level security with 256-bit encryption and is PCI DSS compliant. Your transactions are completely secure.'
+      return 'PayMi uses bank-level security with 256-bit encryption and is PCI DSS compliant. Your transactions are completely secure.'
     }
     if (lowerInput.includes('withdraw') || lowerInput.includes('settlement')) {
       return 'Withdrawals are processed within 24 hours. You can withdraw to your mobile money wallet directly from your dashboard.'
@@ -145,7 +145,7 @@ export function LiveChat() {
                     <Bot className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-white">SalonePay Support</h3>
+                    <h3 className="font-semibold text-white">PayMi Support</h3>
                     <p className="text-xs text-white/80">Online • Usually replies instantly</p>
                   </div>
                 </div>

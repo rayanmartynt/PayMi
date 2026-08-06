@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { prisma } = require('../server');
+const prisma = require('../lib/prisma');
 
 const auth = async (req, res, next) => {
   try {
@@ -33,7 +33,9 @@ const auth = async (req, res, next) => {
 
 const customerAuth = async (req, res, next) => {
   try {
-    await auth(req, res, () => {});
+    await auth(req, res, (err) => {
+      if (err) return next(err);
+    });
     
     if (req.user.role !== 'CUSTOMER') {
       return res.status(403).json({ error: 'Access denied. Customer only.' });
@@ -41,13 +43,17 @@ const customerAuth = async (req, res, next) => {
 
     next();
   } catch (error) {
-    res.status(401).json({ error: 'Authentication failed' });
+    if (!res.headersSent) {
+      res.status(401).json({ error: 'Authentication failed' });
+    }
   }
 };
 
 const merchantAuth = async (req, res, next) => {
   try {
-    await auth(req, res, () => {});
+    await auth(req, res, (err) => {
+      if (err) return next(err);
+    });
     
     if (req.user.role !== 'MERCHANT') {
       return res.status(403).json({ error: 'Access denied. Merchant only.' });
@@ -55,13 +61,17 @@ const merchantAuth = async (req, res, next) => {
 
     next();
   } catch (error) {
-    res.status(401).json({ error: 'Authentication failed' });
+    if (!res.headersSent) {
+      res.status(401).json({ error: 'Authentication failed' });
+    }
   }
 };
 
 const adminAuth = async (req, res, next) => {
   try {
-    await auth(req, res, () => {});
+    await auth(req, res, (err) => {
+      if (err) return next(err);
+    });
     
     if (req.user.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Access denied. Admin only.' });
@@ -69,7 +79,9 @@ const adminAuth = async (req, res, next) => {
 
     next();
   } catch (error) {
-    res.status(401).json({ error: 'Authentication failed' });
+    if (!res.headersSent) {
+      res.status(401).json({ error: 'Authentication failed' });
+    }
   }
 };
 

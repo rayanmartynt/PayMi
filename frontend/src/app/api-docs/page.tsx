@@ -20,7 +20,7 @@ export default function ApiDocsPage() {
   const codeExamples = [
     {
       language: 'curl',
-      code: `curl -X POST https://api.salonepay.com/v1/payments \\
+      code: `curl -X POST https://api.PayMi.com/v1/payments \\
   -H "Authorization: Bearer YOUR_SECRET_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -36,7 +36,7 @@ export default function ApiDocsPage() {
     },
     {
       language: 'javascript',
-      code: `const response = await fetch('https://api.salonepay.com/v1/payments', {
+      code: `const response = await fetch('https://api.PayMi.com/v1/payments', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer YOUR_SECRET_KEY',
@@ -61,7 +61,7 @@ const payment = await response.json()`
       code: `import requests
 
 response = requests.post(
-    'https://api.salonepay.com/v1/payments',
+    'https://api.PayMi.com/v1/payments',
     headers={
         'Authorization': 'Bearer YOUR_SECRET_KEY',
         'Content-Type': 'application/json'
@@ -90,7 +90,7 @@ payment = response.json()`
           <div className="text-center mb-16">
             <h1 className="text-4xl font-bold mb-4">API Documentation</h1>
             <p className="text-xl text-muted-foreground">
-              Integrate SalonePay into your application with our powerful REST API
+              Integrate PayMi into your application with our powerful REST API
             </p>
           </div>
 
@@ -290,7 +290,7 @@ payment = response.json()`
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground mb-4">
-                Our support team is available to help you integrate SalonePay into your application.
+                Our support team is available to help you integrate PayMi into your application.
               </p>
               <div className="flex gap-4">
                 <Link href="/contact">

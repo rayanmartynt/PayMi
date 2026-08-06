@@ -24,7 +24,7 @@ export default function BlogPage() {
     },
     {
       id: 2,
-      title: 'How to Integrate SalonePay into Your Website',
+      title: 'How to Integrate PayMi into Your Website',
       excerpt: 'A step-by-step guide to integrating our payment gateway into your website using our REST API.',
       author: 'Tech Team',
       date: 'July 25, 2024',
@@ -64,7 +64,7 @@ export default function BlogPage() {
     },
     {
       id: 6,
-      title: 'SalonePay API v2: What\'s New',
+      title: 'PayMi API v2: What\'s New',
       excerpt: 'Discover the new features and improvements in our latest API release.',
       author: 'Tech Team',
       date: 'June 28, 2024',
@@ -88,7 +88,7 @@ export default function BlogPage() {
           <div className="text-center mb-16">
             <h1 className="text-4xl font-bold mb-4">Blog</h1>
             <p className="text-xl text-muted-foreground">
-              Insights, tutorials, and updates from the SalonePay team
+              Insights, tutorials, and updates from the PayMi team
             </p>
           </div>
 

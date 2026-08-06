@@ -22,7 +22,7 @@ export default function SecurityPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground leading-relaxed">
-                At SalonePay, we take security seriously. We employ industry-standard security measures 
+                At PayMi, we take security seriously. We employ industry-standard security measures 
                 to protect your data and transactions. Our security practices are designed to meet and exceed 
                 international standards for payment processing.
               </p>
@@ -165,7 +165,7 @@ export default function SecurityPage() {
                 Help us keep your account secure by following these best practices:
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2">
-                <li>Use a strong, unique password for your SalonePay account</li>
+                <li>Use a strong, unique password for your PayMi account</li>
                 <li>Enable two-factor authentication</li>
                 <li>Never share your password or API keys with anyone</li>
                 <li>Keep your contact information up to date</li>
@@ -186,7 +186,7 @@ export default function SecurityPage() {
                 immediately. We take all security reports seriously and will respond promptly.
               </p>
               <p className="text-muted-foreground">
-                Email: security@salonepay.com<br />
+                Email: security@PayMi.com<br />
                 Phone: +232 76 123 456
               </p>
             </CardContent>

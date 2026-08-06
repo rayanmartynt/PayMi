@@ -10,7 +10,7 @@ export function Footer() {
             <div className="flex items-center space-x-2 mb-4">
               <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600" />
               <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                SalonePay
+                PayMi
               </span>
             </div>
             <p className="text-muted-foreground mb-6">
@@ -116,7 +116,7 @@ export function Footer() {
             <div className="space-y-3">
               <div className="flex items-center gap-3 text-muted-foreground">
                 <Mail className="h-4 w-4" />
-                <span>support@salonepay.com</span>
+                <span>support@PayMi.com</span>
               </div>
               <div className="flex items-center gap-3 text-muted-foreground">
                 <Phone className="h-4 w-4" />
@@ -128,7 +128,7 @@ export function Footer() {
               </div>
             </div>
             <div className="text-right text-muted-foreground">
-              <p>&copy; 2026 SalonePay. All rights reserved.</p>
+              <p>&copy; 2026 PayMi. All rights reserved.</p>
             </div>
           </div>
         </div>

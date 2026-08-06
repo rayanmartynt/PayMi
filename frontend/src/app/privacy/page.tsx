@@ -19,7 +19,7 @@ export default function PrivacyPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                SalonePay collects the following types of information:
+                PayMi collects the following types of information:
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2">
                 <li><strong>Personal Information:</strong> Name, email address, phone number, business name</li>
@@ -183,7 +183,7 @@ export default function PrivacyPage() {
                 If you have questions about this Privacy Policy or your personal information, please contact us at:
               </p>
               <p className="text-muted-foreground mt-2">
-                Email: privacy@salonepay.com<br />
+                Email: privacy@PayMi.com<br />
                 Phone: +232 76 123 456<br />
                 Address: Freetown, Sierra Leone
               </p>
