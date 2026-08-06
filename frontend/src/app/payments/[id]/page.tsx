@@ -269,7 +269,7 @@ export default function PaymentLinkPage({ params }: { params: Promise<{ id: stri
 
                 <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                   <Shield className="h-4 w-4 text-green-500" />
-                  <span>Secured by SalonePay</span>
+                  <span>Secured by PayMi</span>
                   <Lock className="h-4 w-4 text-green-500" />
                 </div>
               </CardContent>
@@ -393,7 +393,7 @@ export default function PaymentLinkPage({ params }: { params: Promise<{ id: stri
             </Card>
 
             <div className="mt-6 text-center text-xs text-muted-foreground">
-              <p>Powered by SalonePay • Secure payments for Sierra Leone</p>
+              <p>Powered by PayMi • Secure payments for Sierra Leone</p>
             </div>
           </motion.div>
         </div>

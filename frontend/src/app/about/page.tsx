@@ -12,7 +12,7 @@ export default function AboutPage() {
       <main className="container mx-auto px-4 py-16">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-16">
-            <h1 className="text-4xl font-bold mb-4">About SalonePay</h1>
+            <h1 className="text-4xl font-bold mb-4">About PayMi</h1>
             <p className="text-xl text-muted-foreground">
               Empowering Sierra Leone's digital economy with modern payment solutions
             </p>
@@ -24,7 +24,7 @@ export default function AboutPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground leading-relaxed">
-                At SalonePay, we believe that every business in Sierra Leone deserves access to world-class payment infrastructure. 
+                At PayMi, we believe that every business in Sierra Leone deserves access to world-class payment infrastructure. 
                 Our mission is to simplify digital payments, empower local businesses, and drive financial inclusion across the nation.
                 We're building the payment gateway that Sierra Leone needs to compete in the global digital economy.
               </p>
@@ -37,7 +37,7 @@ export default function AboutPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                Founded in 2024, SalonePay was born from a simple observation: Sierra Leone's businesses were struggling 
+                Founded in 2024, PayMi was born from a simple observation: Sierra Leone's businesses were struggling 
                 to accept digital payments effectively. Existing solutions were either too expensive, too complicated, 
                 or simply didn't support local payment methods like Orange Money, Afrimoney, and QMoney.
               </p>

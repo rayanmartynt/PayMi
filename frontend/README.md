@@ -1,4 +1,4 @@
-# SalonePay - Sierra Leone Payment Gateway
+# PayMi - Sierra Leone Payment Gateway
 
 A modern, production-ready payment gateway web application designed for Sierra Leone, similar to Stripe or Flutterwave. Built with Next.js 15, React 19, TypeScript, and Tailwind CSS.
 
@@ -42,7 +42,7 @@ A modern, production-ready payment gateway web application designed for Sierra L
 ## Project Structure
 
 ```
-salonepay/
+PayMi/
 ├── src/
 │   ├── app/                    # Next.js App Router pages
 │   │   ├── dashboard/         # Merchant dashboard pages
@@ -90,7 +90,7 @@ salonepay/
 
 1. Navigate to the project directory:
 ```bash
-cd salonepay
+cd PayMi
 ```
 
 2. Install dependencies:
@@ -249,4 +249,4 @@ This project is proprietary software. All rights reserved.
 
 ## Support
 
-For support, email support@salonepay.com or call +232 76 123 456.
+For support, email support@PayMi.com or call +232 76 123 456.

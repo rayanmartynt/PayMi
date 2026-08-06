@@ -43,7 +43,7 @@ const apiEndpoints = [
           amount: 50000,
           currency: 'SLE',
           created_at: '2024-08-01T10:30:00Z',
-          payment_url: 'https://salonepay.com/pay/pay_1234567890',
+          payment_url: 'https://PayMi.com/pay/pay_1234567890',
         },
       },
       {
@@ -150,7 +150,7 @@ const apiEndpoints = [
 ]
 
 const codeExamples = {
-  curl: `curl -X POST https://api.salonepay.com/v1/payments \\
+  curl: `curl -X POST https://api.PayMi.com/v1/payments \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -162,7 +162,7 @@ const codeExamples = {
     "payment_method": "orange_money"
   }'`,
   
-  javascript: `const response = await fetch('https://api.salonepay.com/v1/payments', {
+  javascript: `const response = await fetch('https://api.PayMi.com/v1/payments', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY',
@@ -184,7 +184,7 @@ console.log(payment);`,
   python: `import requests
 
 response = requests.post(
-    'https://api.salonepay.com/v1/payments',
+    'https://api.PayMi.com/v1/payments',
     headers={
         'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
@@ -205,7 +205,7 @@ print(payment)`,
   php: `<?php
 $ch = curl_init();
 
-curl_setopt($ch, CURLOPT_URL, 'https://api.salonepay.com/v1/payments');
+curl_setopt($ch, CURLOPT_URL, 'https://api.PayMi.com/v1/payments');
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
@@ -263,7 +263,7 @@ export default function APIDocsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">API Documentation</h1>
-        <p className="text-muted-foreground">Integrate SalonePay into your application</p>
+        <p className="text-muted-foreground">Integrate PayMi into your application</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -284,7 +284,7 @@ export default function APIDocsPage() {
             <Globe className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-sm font-mono">https://api.salonepay.com</div>
+            <div className="text-sm font-mono">https://api.PayMi.com</div>
             <p className="text-xs text-muted-foreground mt-1">Production</p>
           </CardContent>
         </Card>

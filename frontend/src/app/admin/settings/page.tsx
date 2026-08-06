@@ -132,12 +132,12 @@ export default function AdminSettingsPage() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Platform Name</label>
-            <Input defaultValue="SalonePay" />
+            <Input defaultValue="PayMi" />
           </div>
 
           <div className="space-y-2">
             <label className="text-sm font-medium">Support Email</label>
-            <Input type="email" defaultValue="support@salonepay.com" />
+            <Input type="email" defaultValue="support@PayMi.com" />
           </div>
 
           <div className="space-y-2">

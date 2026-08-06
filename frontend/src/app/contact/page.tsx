@@ -140,8 +140,8 @@ export default function ContactPage() {
                     <Mail className="h-5 w-5 text-blue-500 flex-shrink-0 mt-1" />
                     <div>
                       <div className="font-semibold">Email</div>
-                      <a href="mailto:support@salonepay.com" className="text-sm text-muted-foreground hover:text-primary">
-                        support@salonepay.com
+                      <a href="mailto:support@PayMi.com" className="text-sm text-muted-foreground hover:text-primary">
+                        support@PayMi.com
                       </a>
                     </div>
                   </div>
@@ -195,7 +195,7 @@ export default function ContactPage() {
                   <CardTitle>Support Channels</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <a href="mailto:support@salonepay.com" className="block">
+                  <a href="mailto:support@PayMi.com" className="block">
                     <Button variant="outline" className="w-full justify-start">
                       <Mail className="h-4 w-4 mr-2" />
                       Email Support
@@ -231,7 +231,7 @@ export default function ContactPage() {
                 <div>
                   <h3 className="font-semibold mb-2">Do you offer technical support for integration?</h3>
                   <p className="text-sm text-muted-foreground">
-                    Yes! Our technical support team is available to help you integrate SalonePay into your platform.
+                    Yes! Our technical support team is available to help you integrate PayMi into your platform.
                   </p>
                 </div>
                 <div>

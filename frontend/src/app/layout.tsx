@@ -7,7 +7,7 @@ import { LiveChat } from '@/components/LiveChat'
 import { LiveChatProvider } from '@/contexts/LiveChatContext'
 
 export const metadata: Metadata = {
-  title: 'SalonePay - Sierra Leone Payment Gateway',
+  title: 'PayMi - Sierra Leone Payment Gateway',
   description: 'Accept payments in Sierra Leone with Orange Money, Afrimoney, and QMoney',
 }
 

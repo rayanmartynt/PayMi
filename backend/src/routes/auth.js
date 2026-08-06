@@ -68,7 +68,7 @@ router.post('/register', async (req, res) => {
 // Login
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, twoFactorToken } = req.body;
 
     const user = await prisma.user.findUnique({
       where: { email },
@@ -87,6 +87,24 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Check if 2FA is enabled
+    if (user.twoFactorEnabled) {
+      if (!twoFactorToken) {
+        return res.status(403).json({ 
+          error: 'Two-factor authentication required',
+          requiresTwoFactor: true 
+        });
+      }
+
+      // Verify 2FA token
+      const twoFactorService = require('../services/twoFactor');
+      const isValid2FA = twoFactorService.verifyToken(user.twoFactorSecret, twoFactorToken);
+      
+      if (!isValid2FA) {
+        return res.status(401).json({ error: 'Invalid two-factor token' });
+      }
+    }
+
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
@@ -97,6 +115,7 @@ router.post('/login', async (req, res) => {
         email: user.email,
         name: user.name,
         role: user.role,
+        twoFactorEnabled: user.twoFactorEnabled,
         merchant: user.merchant,
         customer: user.customer
       }

@@ -58,7 +58,7 @@ export function Hero() {
 
             <p className="text-xl text-muted-foreground mb-8 max-w-lg">
               The modern payment gateway for businesses, developers, and merchants.
-              Accept Orange Money, Afrimoney, QMoney, Visa, and Mastercard payments seamlessly.
+              Accept Orange Money, Afrimoney, QMoney payments seamlessly.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 mb-12">

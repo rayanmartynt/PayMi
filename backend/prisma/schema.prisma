@@ -22,6 +22,9 @@ model User {
   verificationCodeExpiry DateTime?
   resetToken            String?
   resetTokenExpiry      DateTime?
+  twoFactorEnabled      Boolean   @default(false)
+  twoFactorSecret       String?
+  twoFactorBackupCodes   String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -130,6 +133,8 @@ model Settlement {
   status      String   @default("PENDING")
   mobileMoneyProvider String // ORANGE_MONEY, AFRIMONEY, QMONEY
   mobileNumber String
+  instant     Boolean  @default(false)
+  instantFee  Float    @default(0)
   settledAt   DateTime?
   createdAt   DateTime @default(now())
 
@@ -364,4 +369,207 @@ model SupportTicket {
 
   @@index([customerId])
   @@index([status])
+}
+
+model Subscription {
+  id          String   @id @default(uuid())
+  merchantId  String
+  customerId  String
+  amount      Float
+  currency    String   @default("SLE")
+  interval    String   // DAILY, WEEKLY, MONTHLY, YEARLY
+  status      String   @default("ACTIVE") // ACTIVE, PAUSED, CANCELLED, EXPIRED
+  nextBilling DateTime
+  lastPayment DateTime?
+  metadata    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([merchantId])
+  @@index([customerId])
+  @@index([status])
+}
+
+model SplitPayment {
+  id              String   @id @default(uuid())
+  merchantId      String
+  totalAmount     Float
+  currency        String   @default("SLE")
+  status          String   @default("PENDING") // PENDING, COMPLETED, FAILED
+  reference       String   @unique
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  splits          SplitPaymentPart[]
+
+  @@index([merchantId])
+  @@index([status])
+}
+
+model SplitPaymentPart {
+  id              String       @id @default(uuid())
+  splitPaymentId String
+  splitPayment   SplitPayment @relation(fields: [splitPaymentId], references: [id])
+  recipientId     String
+  recipientType   String       // MERCHANT, CUSTOMER
+  amount          Float
+  status          String       @default("PENDING") // PENDING, COMPLETED, FAILED
+  transactionId   String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([splitPaymentId])
+  @@index([recipientId])
+}
+
+model Escrow {
+  id              String   @id @default(uuid())
+  merchantId      String
+  customerId      String
+  amount          Float
+  currency        String   @default("SLE")
+  status          String   @default("PENDING") // PENDING, FUNDED, RELEASED, REFUNDED, DISPUTED
+  releaseCondition String?
+  reference       String   @unique
+  fundedAt        DateTime?
+  releasedAt      DateTime?
+  refundedAt      DateTime?
+  metadata        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([merchantId])
+  @@index([customerId])
+  @@index([status])
+}
+
+model QRCode {
+  id          String   @id @default(uuid())
+  merchantId  String
+  amount      Float?
+  currency    String   @default("SLE")
+  qrCodeData  String
+  status      String   @default("ACTIVE") // ACTIVE, EXPIRED, DISABLED
+  expiresAt   DateTime?
+  scanCount   Int      @default(0)
+  metadata    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([merchantId])
+  @@index([status])
+}
+
+model Invoice {
+  id          String   @id @default(uuid())
+  merchantId  String
+  customerId  String?
+  invoiceNumber String @unique
+  amount      Float
+  currency    String   @default("SLE")
+  status      String   @default("DRAFT") // DRAFT, SENT, PAID, OVERDUE, CANCELLED
+  dueDate     DateTime?
+  paidAt      DateTime?
+  items       String   // JSON array of invoice items
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([merchantId])
+  @@index([customerId])
+  @@index([status])
+}
+
+model Referral {
+  id          String   @id @default(uuid())
+  referrerId  String
+  refereeId   String?
+  code        String   @unique
+  status      String   @default("PENDING") // PENDING, COMPLETED
+  reward      Float
+  currency    String   @default("SLE")
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([referrerId])
+  @@index([refereeId])
+  @@index([code])
+}
+
+model LoyaltyReward {
+  id          String   @id @default(uuid())
+  customerId  String
+  points      Int      @default(0)
+  level       String   @default("BRONZE") // BRONZE, SILVER, GOLD, PLATINUM
+  totalSpent  Float    @default(0)
+  redeemed    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([customerId])
+}
+
+model PromoCode {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  description String?
+  discountType String  // PERCENTAGE, FIXED_AMOUNT
+  discountValue Float
+  minAmount   Float?
+  maxDiscount Float?
+  usageLimit  Int?
+  usedCount   Int      @default(0)
+  validFrom   DateTime
+  validUntil  DateTime
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([code])
+  @@index([active])
+}
+
+model Currency {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  symbol      String
+  rate        Float    @default(1.0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([code])
+  @@index([active])
+}
+
+model BulkPayment {
+  id          String   @id @default(uuid())
+  merchantId  String
+  totalAmount Float
+  currency    String   @default("SLE")
+  status      String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  fileUrl     String
+  processedCount Int   @default(0)
+  failedCount Int      @default(0)
+  metadata    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([merchantId])
+  @@index([status])
+}
+
+model ChatConversation {
+  id          String   @id @default(uuid())
+  userId      String?
+  sessionId   String   @unique
+  messages    String   // JSON array of messages
+  status      String   @default("ACTIVE") // ACTIVE, CLOSED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([sessionId])
 }

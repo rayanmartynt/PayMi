@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Lock, Mail, ArrowRight, AlertCircle, Loader2 } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/features/auth/AuthContext'
@@ -51,10 +52,16 @@ export default function AuthLoginPage() {
         >
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-gradient-to-r from-[#4A7FA7] to-[#1A3D63] mb-4">
-              <Lock className="h-8 w-8 text-white" />
+              <Image
+                src="/Dark mode logo.png"
+                alt="PayMi Logo"
+                width={50}
+                height={20}
+                priority
+              />
             </div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-[#4A7FA7] to-[#1A3D63] bg-clip-text text-transparent">
-              SalonePay
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-[#44b75e] to-[#0b5ed7] bg-clip-text text-transparent">
+              PayMi
             </h1>
             <p className="text-muted-foreground mt-2">Sign in to your account</p>
           </div>
@@ -82,7 +89,7 @@ export default function AuthLoginPage() {
                     <Input
                       id="email"
                       type="email"
-                      placeholder="you@business.com"
+                      placeholder="username@gmail.com"
                       className="pl-10"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}

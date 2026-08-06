@@ -6,6 +6,7 @@ import { Menu, X, Moon, Sun } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
@@ -22,9 +23,15 @@ export function Navbar() {
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           <Link href="/" className="flex items-center space-x-2">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600" />
-            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              SalonePay
+            <Image
+              src={darkMode ? "/Dark mode logo.png" : "/Light mode logo.png"}
+              alt="PayMi Logo"
+              width={60}
+              height={20}
+              priority
+            />
+            <span className="text-xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+              PayMi
             </span>
           </Link>
 

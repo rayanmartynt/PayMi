@@ -8,7 +8,7 @@ const testimonials = [
   {
     name: 'Sarah Kargbo',
     role: 'CEO, Freetown Fashion',
-    content: 'SalonePay has transformed how we accept payments. Our customers love paying with mobile money, and we\'ve seen a 40% increase in sales since switching.',
+    content: 'PayMi has transformed how we accept payments. Our customers love paying with mobile money, and we\'ve seen a 40% increase in sales since switching.',
     rating: 5,
     avatar: '👩‍💼',
   },
@@ -46,7 +46,7 @@ export function Testimonials() {
             </span>
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            See what our customers say about SalonePay
+            See what our customers say about PayMi
           </p>
         </motion.div>
 

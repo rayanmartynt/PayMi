@@ -113,7 +113,7 @@ export default function CookiePolicyPage() {
                 If you have questions about our Cookie Policy, please contact us at:
               </p>
               <p className="text-muted-foreground mt-2">
-                Email: privacy@salonepay.com<br />
+                Email: privacy@PayMi.com<br />
                 Phone: +232 76 123 456<br />
                 Address: Freetown, Sierra Leone
               </p>

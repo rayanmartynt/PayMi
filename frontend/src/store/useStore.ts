@@ -88,7 +88,7 @@ export const useStore = create<AppState>()(
       }),
     }),
     {
-      name: 'salonepay-storage',
+      name: 'PayMi-storage',
     }
   )
 )

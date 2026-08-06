@@ -19,7 +19,7 @@ export default function TermsPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground leading-relaxed">
-                By accessing or using SalonePay's services, you agree to be bound by these Terms of Service. 
+                By accessing or using PayMi's services, you agree to be bound by these Terms of Service. 
                 If you do not agree to these terms, please do not use our services. We reserve the right to 
                 modify these terms at any time, and your continued use of the service constitutes acceptance 
                 of any changes.
@@ -33,7 +33,7 @@ export default function TermsPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                SalonePay provides payment processing services including:
+                PayMi provides payment processing services including:
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2">
                 <li>Mobile money payment processing (Orange Money, Afrimoney, QMoney)</li>
@@ -52,7 +52,7 @@ export default function TermsPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                As a user of SalonePay, you agree to:
+                As a user of PayMi, you agree to:
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2">
                 <li>Provide accurate and complete information during registration</li>
@@ -118,7 +118,7 @@ export default function TermsPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground leading-relaxed">
-                SalonePay shall not be liable for any indirect, incidental, special, or consequential 
+                PayMi shall not be liable for any indirect, incidental, special, or consequential 
                 damages arising from the use or inability to use our services. Our total liability is 
                 limited to the fees paid by you in the twelve months preceding the claim.
               </p>
@@ -160,7 +160,7 @@ export default function TermsPage() {
                 If you have questions about these Terms of Service, please contact us at:
               </p>
               <p className="text-muted-foreground mt-2">
-                Email: legal@salonepay.com<br />
+                Email: legal@PayMi.com<br />
                 Phone: +232 76 123 456<br />
                 Address: Freetown, Sierra Leone
               </p>
