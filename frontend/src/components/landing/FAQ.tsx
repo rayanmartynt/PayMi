@@ -47,7 +47,7 @@ export function FAQ() {
         >
           <h2 className="text-3xl lg:text-5xl font-bold mb-4">
             Frequently Asked{' '}
-            <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
               Questions
             </span>
           </h2>

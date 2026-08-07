@@ -511,6 +511,22 @@ class ApiClient {
     }
   }
 
+  async getCustomerWithdrawals(params?: { page?: number; limit?: number; status?: string }) {
+    const query = new URLSearchParams(params as any).toString();
+    return this.request<{ withdrawals: any[] }>(`/api/customers/withdrawals${query ? `?${query}` : ''}`);
+  }
+
+  async createCustomerWithdrawal(data: {
+    amount: number;
+    mobileMoneyProvider: string;
+    mobileNumber: string;
+  }) {
+    return this.request('/api/customers/withdrawals', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async getPaymentLinks(params?: { page?: number; limit?: number; status?: string }) {
     const query = new URLSearchParams(params as any).toString();
     return this.request(`/api/payments/links${query ? `?${query}` : ''}`);

@@ -2,8 +2,11 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { fileTypeFromBuffer } = require('file-type');
 const { auth, merchantAuth, customerAuth } = require('../middleware/auth');
-const prisma = require('../lib/prisma');
+const db = require('../db/index');
+const { eq } = require('drizzle-orm');
+const { users, merchants, customers, kycDocuments, customerKycDocuments } = require('../db/schema');
 
 // Import email service with error handling
 let sendKYCStatusEmail;
@@ -39,11 +42,12 @@ const fileFilter = (req, file, cb) => {
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype) || file.mimetype === 'application/pdf';
 
-  if (extname && mimetype) {
-    return cb(null, true);
-  } else {
-    cb(new Error('Only JPEG, PNG, and PDF files are allowed'));
+  if (!extname || !mimetype) {
+    return cb(new Error('Only JPEG, PNG, and PDF files are allowed'));
   }
+
+  // Additional validation will be done in the route handler using file-type
+  cb(null, true);
 };
 
 const upload = multer({
@@ -56,31 +60,41 @@ const upload = multer({
 router.post('/merchant', merchantAuth, upload.single('document'), async (req, res) => {
   try {
     const { documentType } = req.body;
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
 
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    // Validate file content using file-type
+    const filePath = path.join(__dirname, '../../uploads', req.file.filename);
+    const buffer = fs.readFileSync(filePath);
+    const fileType = await fileTypeFromBuffer(buffer);
+
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+    
+    if (!fileType || !allowedMimeTypes.includes(fileType.mime)) {
+      // Delete the invalid file
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ error: 'Invalid file type. Only JPEG, PNG, and PDF files are allowed' });
+    }
+
     const documentUrl = `/uploads/${req.file.filename}`;
 
-    const kycDocument = await prisma.kYCDocument.create({
-      data: {
-        merchantId: merchant.id,
-        documentType,
-        documentUrl,
-        status: 'PENDING',
-        submittedAt: new Date()
-      }
-    });
-
-    // Update merchant onboarding step
-    await prisma.merchant.update({
-      where: { id: merchant.id },
-      data: { onboardingStep: 'KYC_PENDING' }
-    });
+    const kycDocumentResult = await db.insert(kycDocuments).values({
+      merchantId: merchant.id,
+      documentType,
+      documentUrl,
+      status: 'PENDING',
+      submittedAt: new Date()
+    }).returning();
+    
+    const kycDocument = kycDocumentResult[0];
 
     res.json(kycDocument);
   } catch (error) {
@@ -93,25 +107,39 @@ router.post('/merchant', merchantAuth, upload.single('document'), async (req, re
 router.post('/customer', customerAuth, upload.single('document'), async (req, res) => {
   try {
     const { documentType } = req.body;
-    const customer = await prisma.customer.findUnique({
-      where: { userId: req.user.id }
-    });
+    const customerResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
+    const customer = customerResult[0];
+
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
 
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    // Validate file content
+    const filePath = path.join(__dirname, '../../uploads', req.file.filename);
+    const buffer = fs.readFileSync(filePath);
+    const fileType = await fileTypeFromBuffer(buffer);
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+    
+    if (!fileType || !allowedMimeTypes.includes(fileType.mime)) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ error: 'Invalid file type. Only JPEG, PNG, and PDF files are allowed' });
+    }
+
     const documentUrl = `/uploads/${req.file.filename}`;
 
-    const kycDocument = await prisma.customerKYCDocument.create({
-      data: {
-        customerId: customer.id,
-        documentType,
-        documentUrl,
-        status: 'PENDING',
-        submittedAt: new Date()
-      }
-    });
+    const kycDocumentResult = await db.insert(customerKycDocuments).values({
+      customerId: customer.id,
+      documentType,
+      documentUrl,
+      status: 'PENDING',
+      submittedAt: new Date()
+    }).returning();
+    
+    const kycDocument = kycDocumentResult[0];
 
     res.json(kycDocument);
   } catch (error) {
@@ -123,14 +151,14 @@ router.post('/customer', customerAuth, upload.single('document'), async (req, re
 // Get merchant KYC documents
 router.get('/merchant', merchantAuth, async (req, res) => {
   try {
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const documents = await prisma.kYCDocument.findMany({
-      where: { merchantId: merchant.id },
-      orderBy: { submittedAt: 'desc' }
-    });
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const documents = await db.select().from(kycDocuments).where(eq(kycDocuments.merchantId, merchant.id));
 
     res.json(documents);
   } catch (error) {
@@ -142,14 +170,14 @@ router.get('/merchant', merchantAuth, async (req, res) => {
 // Get customer KYC documents
 router.get('/customer', customerAuth, async (req, res) => {
   try {
-    const customer = await prisma.customer.findUnique({
-      where: { userId: req.user.id }
-    });
+    const customerResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
+    const customer = customerResult[0];
 
-    const documents = await prisma.customerKYCDocument.findMany({
-      where: { customerId: customer.id },
-      orderBy: { submittedAt: 'desc' }
-    });
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const documents = await db.select().from(customerKycDocuments).where(eq(customerKycDocuments.customerId, customer.id));
 
     res.json(documents);
   } catch (error) {
@@ -167,50 +195,42 @@ router.put('/merchant/:id/review', auth, async (req, res) => {
 
     const { status, rejectionReason, adminComment } = req.body;
 
-    const kycDocument = await prisma.kYCDocument.update({
-      where: { id: req.params.id },
-      data: {
+    const kycDocumentResult = await db.update(kycDocuments)
+      .set({
         status,
         rejectionReason,
         adminComment,
         reviewedAt: new Date()
-      },
-      include: {
-        merchant: {
-          include: {
-            user: true
-          }
-        }
-      }
-    });
+      })
+      .where(eq(kycDocuments.id, req.params.id))
+      .returning();
+    
+    const kycDocument = kycDocumentResult[0];
 
     // Update merchant KYC status
-    await prisma.merchant.update({
-      where: { id: kycDocument.merchantId },
-      data: {
-        kycStatus: status === 'APPROVED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : 'UNDER_REVIEW'
-      }
-    });
+    const kycVerified = status === 'APPROVED';
+    await db.update(merchants)
+      .set({ kycVerified })
+      .where(eq(merchants.id, kycDocument.merchantId));
 
-    // Update user KYC status
-    await prisma.user.update({
-      where: { id: kycDocument.merchant.userId },
-      data: {
-        kycStatus: status === 'APPROVED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : 'UNDER_REVIEW'
-      }
-    });
+    // Get merchant user for email
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.id, kycDocument.merchantId)).limit(1);
+    const merchant = merchantResult[0];
+    
+    const userResult = await db.select().from(users).where(eq(users.id, merchant.userId)).limit(1);
+    const user = userResult[0];
 
     // Send email notification
     await sendKYCStatusEmail(
-      kycDocument.merchant.user.email,
-      kycDocument.merchant.user.name,
+      user.email,
+      user.name,
       status,
       rejectionReason
     );
 
     // Notify merchant via socket
     if (global.io) {
-      global.io.to(kycDocument.merchant.userId).emit('kyc_status_update', {
+      global.io.to(merchant.userId).emit('kyc_status_update', {
         documentId: kycDocument.id,
         status,
         rejectionReason

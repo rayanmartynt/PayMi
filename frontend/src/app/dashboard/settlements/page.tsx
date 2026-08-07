@@ -157,14 +157,21 @@ function WithdrawModal({
   const [mobileMoneyProvider, setMobileMoneyProvider] = useState('')
   const [mobileNumber, setMobileNumber] = useState('')
   const [loading, setLoading] = useState(false)
+  const [fee, setFee] = useState(0)
+
+  useEffect(() => {
+    const amountValue = parseFloat(amount) || 0
+    setFee(amountValue * 0.10) // 10% fee for merchant withdrawals
+  }, [amount])
 
   const handleSubmit = async () => {
     if (!amount || !mobileMoneyProvider || !mobileNumber) {
       return
     }
 
-    if (parseFloat(amount) > availableBalance) {
-      alert('Insufficient balance')
+    const totalDeduction = parseFloat(amount) + fee
+    if (totalDeduction > availableBalance) {
+      alert(`Insufficient balance. Amount: ${amount}, Fee: ${fee}, Total required: ${totalDeduction}`)
       return
     }
 
@@ -203,6 +210,18 @@ function WithdrawModal({
             onChange={(e) => setAmount(e.target.value)}
             max={availableBalance}
           />
+          {fee > 0 && (
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Fee (10%):</span>
+              <span className="text-orange-600 font-medium">{formatCurrency(fee)}</span>
+            </div>
+          )}
+          {fee > 0 && (
+            <div className="flex justify-between text-xs font-medium">
+              <span>Total:</span>
+              <span>{formatCurrency(parseFloat(amount || '0') + fee)}</span>
+            </div>
+          )}
         </div>
 
         <div className="space-y-2">

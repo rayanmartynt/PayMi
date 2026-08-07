@@ -1,9 +1,12 @@
 const express = require('express');
-const { auth, merchantAuth, customerAuth } = require('../middleware/auth');
-const { PaymentGateway, StripePayment } = require('../services/payment');
-const prisma = require('../lib/prisma');
-
 const router = express.Router();
+const { merchantAuth, auth, customerAuth } = require('../middleware/auth');
+const prisma = require('../db/index');
+const PaymentGateway = require('../services/payment');
+const StripePayment = require('../services/stripePayment');
+
+// 2FA amount threshold for transactions (in SLE)
+const TWO_FA_AMOUNT_THRESHOLD = 1000000; // 1,000,000 SLE - adjust based on local regulations
 
 // Create payment link
 router.post('/links', merchantAuth, async (req, res) => {
@@ -53,7 +56,7 @@ router.get('/links', merchantAuth, async (req, res) => {
 // Process mobile money payment
 router.post('/mobile-money', auth, async (req, res) => {
   try {
-    const { phoneNumber, amount, paymentMethod, merchantId, description } = req.body;
+    const { phoneNumber, amount, paymentMethod, merchantId, description, twoFactorToken } = req.body;
     const reference = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Get merchant
@@ -63,6 +66,26 @@ router.post('/mobile-money', auth, async (req, res) => {
 
     if (!merchant) {
       return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    // Check if amount exceeds 2FA threshold
+    const amountValue = parseFloat(amount);
+    if (amountValue >= TWO_FA_AMOUNT_THRESHOLD) {
+      if (!twoFactorToken) {
+        return res.status(403).json({ 
+          error: 'Two-factor authentication required for transactions above threshold',
+          requiresTwoFactor: true,
+          threshold: TWO_FA_AMOUNT_THRESHOLD
+        });
+      }
+
+      // Verify 2FA token
+      const twoFactorService = require('../services/twoFactor');
+      const isValid2FA = twoFactorService.verifyToken(req.user.twoFactorSecret, twoFactorToken);
+      
+      if (!isValid2FA) {
+        return res.status(401).json({ error: 'Invalid two-factor token' });
+      }
     }
 
     // Initialize payment gateway
@@ -113,7 +136,26 @@ router.post('/mobile-money', auth, async (req, res) => {
 // Create Stripe payment intent
 router.post('/stripe/intent', auth, async (req, res) => {
   try {
-    const { amount, currency, merchantId, description } = req.body;
+    const { amount, currency, merchantId, description, twoFactorToken } = req.body;
+    
+    // Check if amount exceeds 2FA threshold (convert to SLE equivalent if needed)
+    const amountValue = parseFloat(amount);
+    if (currency === 'usd' && amountValue * 15000 >= TWO_FA_AMOUNT_THRESHOLD) {
+      if (!twoFactorToken) {
+        return res.status(403).json({ 
+          error: 'Two-factor authentication required for transactions above threshold',
+          requiresTwoFactor: true,
+          threshold: TWO_FA_AMOUNT_THRESHOLD
+        });
+      }
+
+      const twoFactorService = require('../services/twoFactor');
+      const isValid2FA = twoFactorService.verifyToken(req.user.twoFactorSecret, twoFactorToken);
+      
+      if (!isValid2FA) {
+        return res.status(401).json({ error: 'Invalid two-factor token' });
+      }
+    }
     
     const stripePayment = new StripePayment();
     const result = await stripePayment.createPaymentIntent(amount, currency || 'usd', {

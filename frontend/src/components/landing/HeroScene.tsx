@@ -218,7 +218,7 @@ function Scene() {
         position={[-2.4, 0.9, -0.4]}
         rotation={[0.15, 0.45, -0.2]}
         color="#1A3D63"
-        label="Visa"
+        label="QMoney"
         delay={0}
       />
       <PaymentCard

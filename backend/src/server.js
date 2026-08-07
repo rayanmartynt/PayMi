@@ -1,28 +1,80 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
-const { PrismaClient } = require('@prisma/client');
+const db = require('./db/index');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
-
-const prisma = new PrismaClient();
+// const rabbitMQ = require('./services/rabbitmq');
+// const paymentProcessor = require('./services/paymentProcessor');
+// const notificationService = require('./services/notificationService');
+// const redis = require('./services/redis');
 
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST']
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
 
 const PORT = process.env.PORT || 5000;
 
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false
+}));
+
+// CORS configuration - restrict to localhost:3000 in development
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
+
+// Rate limiting configuration
+const createRateLimiter = (windowMs, max, message) => {
+  return rateLimit({
+    windowMs,
+    max,
+    message: { error: message },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+};
+
+// Different rate limits for different endpoints
+const authLimiter = createRateLimiter(15 * 60 * 1000, 5, 'Too many authentication attempts, please try again later'); // 5 requests per 15 minutes
+const generalLimiter = createRateLimiter(15 * 60 * 1000, 100, 'Too many requests from this IP, please try again later'); // 100 requests per 15 minutes
+const strictLimiter = createRateLimiter(60 * 60 * 1000, 20, 'Too many requests from this IP, please try again later'); // 20 requests per hour
+const twoFactorLimiter = createRateLimiter(15 * 60 * 1000, 10, 'Too many 2FA attempts, please try again later'); // 10 requests per 15 minutes
+
+// Apply general rate limiting to all routes
+app.use(generalLimiter);
+
 // Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use(require('./middleware/sandbox').sandboxMiddleware);
 app.use(require('./middleware/i18n').i18nMiddleware);
@@ -44,44 +96,45 @@ io.on('connection', (socket) => {
 // Make io available globally
 global.io = io;
 
-// Export prisma instance before importing routes
-module.exports = { prisma, io };
+// Export db instance and rate limiters before importing routes
+module.exports = { db, io, authLimiter, twoFactorLimiter, strictLimiter };
 
 // Routes
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/customers/transfers', require('./routes/customerTransfers'));
-app.use('/api/customers/payments', require('./routes/customerPayments'));
-app.use('/api/customers/payment-methods', require('./routes/customerPaymentMethods'));
-app.use('/api/customers/disputes', require('./routes/customerDisputes'));
-app.use('/api/customers/support-tickets', require('./routes/customerSupportTickets'));
 app.use('/api/customers/withdrawals', require('./routes/customerWithdrawals'));
 app.use('/api/merchants', require('./routes/merchants'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/two-factor', require('./routes/twoFactor'));
-app.use('/api/sandbox', require('./routes/sandbox'));
-app.use('/api/analytics', require('./routes/analytics'));
-app.use('/api/subscriptions', require('./routes/subscriptions'));
-app.use('/api/split-payments', require('./routes/splitPayments'));
-app.use('/api/escrow', require('./routes/escrow'));
-app.use('/api/qr-codes', require('./routes/qrCodes'));
-app.use('/api/invoices', require('./routes/invoices'));
-app.use('/api/instant-settlement', require('./routes/instantSettlement'));
-app.use('/api/push-notifications', require('./routes/pushNotifications'));
-app.use('/api/quick-payments', require('./routes/quickPayments'));
-app.use('/api/referrals', require('./routes/referrals'));
-app.use('/api/loyalty', require('./routes/loyalty'));
-app.use('/api/promotions', require('./routes/promotions'));
-app.use('/api/currency', require('./routes/currency'));
-app.use('/api/bulk-payments', require('./routes/bulkPayments'));
-app.use('/api/chatbot', require('./routes/chatbot'));
-app.use('/api/transactions', require('./routes/transactions'));
-app.use('/api/payments', require('./routes/payments'));
-app.use('/api/kyc', require('./routes/kyc'));
-app.use('/api/webhooks', require('./routes/webhooks'));
 app.use('/api/admin', require('./routes/admin'));
-app.use('/api/api-keys', require('./routes/apiKeys'));
-app.use('/api/notifications', require('./routes/notifications'));
-app.use('/api/customer-kyc', require('./routes/customerKYC'));
+// Temporarily disabled routes that need Prisma->Drizzle conversion
+// app.use('/api/customers/payments', require('./routes/customerPayments'));
+// app.use('/api/customers/payment-methods', require('./routes/customerPaymentMethods'));
+// app.use('/api/customers/disputes', require('./routes/customerDisputes'));
+// app.use('/api/customers/support-tickets', require('./routes/customerSupportTickets'));
+// app.use('/api/sandbox', require('./routes/sandbox'));
+// app.use('/api/analytics', require('./routes/analytics'));
+// app.use('/api/subscriptions', require('./routes/subscriptions'));
+// app.use('/api/split-payments', require('./routes/splitPayments'));
+// app.use('/api/escrow', require('./routes/escrow'));
+// app.use('/api/qr-codes', require('./routes/qrCodes'));
+// app.use('/api/invoices', require('./routes/invoices'));
+// app.use('/api/instant-settlement', require('./routes/instantSettlement'));
+// app.use('/api/push-notifications', require('./routes/pushNotifications'));
+// app.use('/api/quick-payments', require('./routes/quickPayments'));
+// app.use('/api/referrals', require('./routes/referrals'));
+// app.use('/api/loyalty', require('./routes/loyalty'));
+// app.use('/api/promotions', require('./routes/promotions'));
+// app.use('/api/currency', require('./routes/currency'));
+// app.use('/api/bulk-payments', require('./routes/bulkPayments'));
+// app.use('/api/chatbot', require('./routes/chatbot'));
+// app.use('/api/transactions', require('./routes/transactions'));
+// app.use('/api/payments', require('./routes/payments'));
+// app.use('/api/kyc', require('./routes/kyc'));
+// app.use('/api/webhooks', require('./routes/webhooks'));
+// app.use('/api/api-keys', require('./routes/apiKeys'));
+// app.use('/api/notifications', require('./routes/notifications'));
+// app.use('/api/customer-kyc', require('./routes/customerKYC'));
 
 // Health check
 app.get('/health', (req, res) => {
@@ -95,6 +148,13 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-httpServer.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+const startServer = async () => {
+  // Redis and RabbitMQ disabled - caching and message queue features unavailable
+  console.warn('Redis and RabbitMQ disabled - caching and message queue features unavailable');
+  
+  httpServer.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+};
+
+startServer();

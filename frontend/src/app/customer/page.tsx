@@ -77,6 +77,13 @@ export default function CustomerDashboardPage() {
       description: 'Manage payment options',
       href: '/customer/payment-methods',
       color: 'from-orange-500 to-orange-600'
+    },
+    {
+      icon: ArrowUpRight,
+      label: 'Withdraw',
+      description: 'Withdraw funds',
+      href: '/customer/withdrawals',
+      color: 'from-pink-500 to-pink-600'
     }
   ]
 

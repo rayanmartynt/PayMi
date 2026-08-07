@@ -1,6 +1,6 @@
 const express = require('express');
 const { auth, merchantAuth } = require('../middleware/auth');
-const prisma = require('../lib/prisma');
+const prisma = require('../db/index');
 
 const router = express.Router();
 
