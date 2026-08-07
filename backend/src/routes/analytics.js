@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, gte, lt, lte, and, desc, asc, sql } = require('drizzle-orm');
+const { merchants, customers, transactions } = require('../db/schema');
 const { auth, merchantAuth, adminAuth } = require('../middleware/auth');
 const { Parser } = require('json2csv');
 const ExcelJS = require('exceljs');
@@ -12,7 +14,13 @@ const PDFDocument = require('pdfkit');
  */
 router.get('/overview', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+    
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
     const { period = '7d' } = req.query;
 
     // Calculate date range
@@ -37,43 +45,44 @@ router.get('/overview', merchantAuth, async (req, res) => {
     }
 
     // Get transactions in period
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        merchantId: merchant.id,
-        createdAt: { gte: startDate },
-        status: 'SUCCESSFUL'
-      }
-    });
+    const transactionsResult = await db.select()
+      .from(transactions)
+      .where(and(
+        eq(transactions.merchantId, merchant.id),
+        gte(transactions.createdAt, startDate),
+        eq(transactions.status, 'SUCCESSFUL')
+      ));
 
     // Calculate metrics
-    const totalRevenue = transactions.reduce((sum, t) => sum + t.amount, 0);
-    const transactionCount = transactions.length;
+    const totalRevenue = transactionsResult.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const transactionCount = transactionsResult.length;
     const averageTransactionValue = transactionCount > 0 ? totalRevenue / transactionCount : 0;
 
     // Get previous period for comparison
     const previousStartDate = new Date(startDate.getTime() - (now.getTime() - startDate.getTime()));
-    const previousTransactions = await prisma.transaction.findMany({
-      where: {
-        merchantId: merchant.id,
-        createdAt: { gte: previousStartDate, lt: startDate },
-        status: 'SUCCESSFUL'
-      }
-    });
+    const previousTransactionsResult = await db.select()
+      .from(transactions)
+      .where(and(
+        eq(transactions.merchantId, merchant.id),
+        gte(transactions.createdAt, previousStartDate),
+        lt(transactions.createdAt, startDate),
+        eq(transactions.status, 'SUCCESSFUL')
+      ));
 
-    const previousRevenue = previousTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const previousRevenue = previousTransactionsResult.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const revenueGrowth = previousRevenue > 0 ? ((totalRevenue - previousRevenue) / previousRevenue) * 100 : 0;
 
     // Payment method breakdown
     const paymentMethods = {};
-    transactions.forEach(t => {
-      paymentMethods[t.paymentMethod] = (paymentMethods[t.paymentMethod] || 0) + t.amount;
+    transactionsResult.forEach(t => {
+      paymentMethods[t.paymentMethod] = (paymentMethods[t.paymentMethod] || 0) + parseFloat(t.amount);
     });
 
     // Daily revenue trend
     const dailyRevenue = {};
-    transactions.forEach(t => {
+    transactionsResult.forEach(t => {
       const date = t.createdAt.toISOString().split('T')[0];
-      dailyRevenue[date] = (dailyRevenue[date] || 0) + t.amount;
+      dailyRevenue[date] = (dailyRevenue[date] || 0) + parseFloat(t.amount);
     });
 
     res.json({
@@ -99,7 +108,13 @@ router.get('/overview', merchantAuth, async (req, res) => {
  */
 router.get('/revenue', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+    
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
     const { period = '30d', granularity = 'daily' } = req.query;
 
     const now = new Date();
@@ -122,18 +137,18 @@ router.get('/revenue', merchantAuth, async (req, res) => {
         startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        merchantId: merchant.id,
-        createdAt: { gte: startDate },
-        status: 'SUCCESSFUL'
-      },
-      orderBy: { createdAt: 'asc' }
-    });
+    const transactionsResult = await db.select()
+      .from(transactions)
+      .where(and(
+        eq(transactions.merchantId, merchant.id),
+        gte(transactions.createdAt, startDate),
+        eq(transactions.status, 'SUCCESSFUL')
+      ))
+      .orderBy(asc(transactions.createdAt));
 
     // Group by granularity
     const revenueData = {};
-    transactions.forEach(t => {
+    transactionsResult.forEach(t => {
       let key;
       const date = new Date(t.createdAt);
       
@@ -159,7 +174,7 @@ router.get('/revenue', merchantAuth, async (req, res) => {
       if (!revenueData[key]) {
         revenueData[key] = { revenue: 0, count: 0 };
       }
-      revenueData[key].revenue += t.amount;
+      revenueData[key].revenue += parseFloat(t.amount);
       revenueData[key].count += 1;
     });
 
@@ -199,29 +214,33 @@ router.get('/revenue', merchantAuth, async (req, res) => {
  */
 router.get('/customers', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+    
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
 
     // Get unique customers
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        merchantId: merchant.id,
-        status: 'SUCCESSFUL'
-      },
-      select: { customerId: true, amount: true, createdAt: true }
-    });
+    const transactionsResult = await db.select()
+      .from(transactions)
+      .where(and(
+        eq(transactions.merchantId, merchant.id),
+        eq(transactions.status, 'SUCCESSFUL')
+      ));
 
-    const uniqueCustomers = new Set(transactions.map(t => t.customerId).filter(Boolean));
+    const uniqueCustomers = new Set(transactionsResult.map(t => t.customerId).filter(Boolean));
     const customerCount = uniqueCustomers.size;
 
     // Calculate customer metrics
     const customerTransactions = {};
-    transactions.forEach(t => {
+    transactionsResult.forEach(t => {
       if (t.customerId) {
         if (!customerTransactions[t.customerId]) {
           customerTransactions[t.customerId] = { count: 0, total: 0, firstPurchase: t.createdAt };
         }
         customerTransactions[t.customerId].count += 1;
-        customerTransactions[t.customerId].total += t.amount;
+        customerTransactions[t.customerId].total += parseFloat(t.amount);
       }
     });
 
@@ -240,7 +259,7 @@ router.get('/customers', merchantAuth, async (req, res) => {
       repeatCustomers,
       repeatRate,
       averageCustomerValue,
-      totalTransactions: transactions.length
+      totalTransactions: transactionsResult.length
     });
   } catch (error) {
     console.error('Customer analytics error:', error);
@@ -264,7 +283,7 @@ router.get('/platform', adminAuth, async (req, res) => {
         startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         break;
       case '30d':
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 96 * 1000);
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
         break;
       case '90d':
         startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
@@ -274,51 +293,39 @@ router.get('/platform', adminAuth, async (req, res) => {
     }
 
     // Get platform-wide metrics
-    const [totalMerchants, totalCustomers, totalTransactions, successfulTransactions] = await Promise.all([
-      prisma.merchant.count(),
-      prisma.customer.count(),
-      prisma.transaction.count({
-        where: { createdAt: { gte: startDate } }
-      }),
-      prisma.transaction.count({
-        where: { 
-          createdAt: { gte: startDate },
-          status: 'SUCCESSFUL'
-        }
-      })
+    const [merchantsResult, customersResult, totalTransactionsResult, successfulTransactionsResult] = await Promise.all([
+      db.select().from(merchants),
+      db.select().from(customers),
+      db.select().from(transactions).where(gte(transactions.createdAt, startDate)),
+      db.select().from(transactions).where(and(gte(transactions.createdAt, startDate), eq(transactions.status, 'SUCCESSFUL')))
     ]);
 
-    // Total revenue
-    const revenueResult = await prisma.transaction.aggregate({
-      where: {
-        createdAt: { gte: startDate },
-        status: 'SUCCESSFUL'
-      },
-      _sum: { amount: true }
-    });
+    const totalMerchants = merchantsResult.length;
+    const totalCustomers = customersResult.length;
+    const totalTransactions = totalTransactionsResult.length;
+    const successfulTransactions = successfulTransactionsResult.length;
 
-    const totalRevenue = revenueResult._sum.amount || 0;
+    // Total revenue
+    const totalRevenue = successfulTransactionsResult.reduce((sum, t) => sum + parseFloat(t.amount), 0);
 
     // Active merchants (with transactions in period)
-    const activeMerchants = await prisma.transaction.findMany({
-      where: {
-        createdAt: { gte: startDate },
-        status: 'SUCCESSFUL'
-      },
-      select: { merchantId: true },
-      distinct: ['merchantId']
-    });
+    const activeMerchantIds = new Set(successfulTransactionsResult.map(t => t.merchantId));
+    const activeMerchants = activeMerchantIds.size;
 
     // Payment method distribution
-    const paymentMethodStats = await prisma.transaction.groupBy({
-      by: ['paymentMethod'],
-      where: {
-        createdAt: { gte: startDate },
-        status: 'SUCCESSFUL'
-      },
-      _sum: { amount: true },
-      _count: true
+    const paymentMethods = {};
+    successfulTransactionsResult.forEach(t => {
+      paymentMethods[t.paymentMethod] = {
+        revenue: (paymentMethods[t.paymentMethod]?.revenue || 0) + parseFloat(t.amount),
+        count: (paymentMethods[t.paymentMethod]?.count || 0) + 1
+      };
     });
+
+    const paymentMethodStats = Object.entries(paymentMethods).map(([method, data]) => ({
+      method,
+      revenue: data.revenue,
+      count: data.count
+    }));
 
     res.json({
       period,
@@ -328,12 +335,8 @@ router.get('/platform', adminAuth, async (req, res) => {
       successfulTransactions,
       successRate: totalTransactions > 0 ? (successfulTransactions / totalTransactions) * 100 : 0,
       totalRevenue,
-      activeMerchants: activeMerchants.length,
-      paymentMethods: paymentMethodStats.map(pm => ({
-        method: pm.paymentMethod,
-        revenue: pm._sum.amount || 0,
-        count: pm._count
-      }))
+      activeMerchants,
+      paymentMethods: paymentMethodStats
     });
   } catch (error) {
     console.error('Platform analytics error:', error);
@@ -347,7 +350,13 @@ router.get('/platform', adminAuth, async (req, res) => {
  */
 router.post('/custom-report', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+    
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
     const { name, metrics, dateRange, startDate, endDate, groupBy } = req.body;
 
     // Calculate date range
@@ -373,18 +382,19 @@ router.post('/custom-report', merchantAuth, async (req, res) => {
     }
 
     // Get transactions
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        merchantId: merchant.id,
-        createdAt: { gte: start, lte: end },
-        status: 'SUCCESSFUL'
-      },
-      orderBy: { createdAt: 'asc' }
-    });
+    const transactionsResult = await db.select()
+      .from(transactions)
+      .where(and(
+        eq(transactions.merchantId, merchant.id),
+        gte(transactions.createdAt, start),
+        lte(transactions.createdAt, end),
+        eq(transactions.status, 'SUCCESSFUL')
+      ))
+      .orderBy(asc(transactions.createdAt));
 
     // Group data based on groupBy
     const groupedData = {};
-    transactions.forEach(t => {
+    transactionsResult.forEach(t => {
       let key;
       const date = new Date(t.createdAt);
       
@@ -415,7 +425,7 @@ router.post('/custom-report', merchantAuth, async (req, res) => {
         };
       }
 
-      groupedData[key].revenue += t.amount;
+      groupedData[key].revenue += parseFloat(t.amount);
       groupedData[key].transactions += 1;
       if (t.customerId) {
         groupedData[key].customerCount.add(t.customerId);

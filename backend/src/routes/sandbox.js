@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc, like } = require('drizzle-orm');
+const { users, merchants, customers, transactions } = require('../db/schema');
 const { requireSandbox } = require('../middleware/sandbox');
 const { auth } = require('../middleware/auth');
 
@@ -33,27 +35,30 @@ router.post('/test-payment', (req, res, next) => requireSandbox(req, res, next),
     }
 
     // Get merchant from user
-    const merchant = await prisma.merchant.findFirst({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select()
+      .from(merchants)
+      .where(eq(merchants.userId, req.user.id))
+      .limit(1);
+    
+    const merchant = merchantResult[0];
 
     if (!merchant) {
       return res.status(404).json({ error: 'Merchant not found' });
     }
 
     // Create simulated transaction
-    const transaction = await prisma.transaction.create({
-      data: {
-        merchantId: merchant.id,
-        amount: parseFloat(amount),
-        currency,
-        paymentMethod,
-        status: 'SUCCESSFUL',
-        description: description || 'Sandbox test payment',
-        reference: `TEST_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        metadata: JSON.stringify({ sandbox: true, test: true })
-      }
-    });
+    const transactionResult = await db.insert(transactions).values({
+      merchantId: merchant.id,
+      amount: parseFloat(amount).toString(),
+      currency,
+      paymentMethod,
+      status: 'SUCCESSFUL',
+      description: description || 'Sandbox test payment',
+      reference: `TEST_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      metadata: JSON.stringify({ sandbox: true, test: true })
+    }).returning();
+    
+    const transaction = transactionResult[0];
 
     // Emit socket notification
     if (global.io) {
@@ -83,25 +88,25 @@ router.post('/test-customer', requireSandbox, auth, async (req, res) => {
     const { name, phone, email } = req.body;
 
     // Create test user
-    const user = await prisma.user.create({
-      data: {
-        email: email || `test_customer_${Date.now()}@sandbox.com`,
-        password: await bcrypt.hash('Test123456', 10),
-        name: name || 'Test Customer',
-        role: 'CUSTOMER',
-        verified: true
-      }
-    });
+    const userResult = await db.insert(users).values({
+      email: email || `test_customer_${Date.now()}@sandbox.com`,
+      password: await bcrypt.hash('Test123456', 10),
+      name: name || 'Test Customer',
+      role: 'CUSTOMER',
+      verified: true
+    }).returning();
+    
+    const user = userResult[0];
 
     // Create customer profile
-    const customer = await prisma.customer.create({
-      data: {
-        userId: user.id,
-        name: name || 'Test Customer',
-        phone: phone || `+232${Math.floor(Math.random() * 90000000) + 10000000}`,
-        balance: 10000.00 // Give test customer some balance
-      }
-    });
+    const customerResult = await db.insert(customers).values({
+      userId: user.id,
+      name: name || 'Test Customer',
+      phone: phone || `+232${Math.floor(Math.random() * 90000000) + 10000000}`,
+      balance: '10000.00' // Give test customer some balance
+    }).returning();
+    
+    const customer = customerResult[0];
 
     res.json({
       message: 'Test customer created successfully',
@@ -132,30 +137,22 @@ router.delete('/reset', requireSandbox, auth, async (req, res) => {
     }
 
     // Delete all test transactions (those with sandbox metadata)
-    await prisma.transaction.deleteMany({
-      where: {
-        metadata: {
-          contains: '"sandbox":true'
-        }
-      }
-    });
+    const testTransactionsResult = await db.select()
+      .from(transactions)
+      .where(like(transactions.metadata, '%"sandbox":true%'));
+    
+    for (const transaction of testTransactionsResult) {
+      await db.delete(transactions).where(eq(transactions.id, transaction.id));
+    }
 
     // Delete test customers created in sandbox
-    const testUsers = await prisma.user.findMany({
-      where: {
-        email: {
-          contains: '@sandbox.com'
-        }
-      }
-    });
+    const testUsersResult = await db.select()
+      .from(users)
+      .where(like(users.email, '%@sandbox.com'));
 
-    for (const user of testUsers) {
-      await prisma.customer.deleteMany({
-        where: { userId: user.id }
-      });
-      await prisma.user.delete({
-        where: { id: user.id }
-      });
+    for (const user of testUsersResult) {
+      await db.delete(customers).where(eq(customers.userId, user.id));
+      await db.delete(users).where(eq(users.id, user.id));
     }
 
     res.json({
@@ -175,31 +172,35 @@ router.delete('/reset', requireSandbox, auth, async (req, res) => {
 router.get('/test-data', requireSandbox, auth, async (req, res) => {
   try {
     // Get test transactions
-    const testTransactions = await prisma.transaction.findMany({
-      where: {
-        metadata: {
-          contains: '"sandbox":true'
-        }
-      },
-      take: 50,
-      orderBy: { createdAt: 'desc' }
-    });
+    const testTransactionsResult = await db.select()
+      .from(transactions)
+      .where(like(transactions.metadata, '%"sandbox":true%'))
+      .orderBy(desc(transactions.createdAt))
+      .limit(50);
 
     // Get test customers
-    const testCustomers = await prisma.user.findMany({
-      where: {
-        email: {
-          contains: '@sandbox.com'
-        }
-      },
-      include: {
-        customer: true
-      },
-      take: 50
-    });
+    const testUsersResult = await db.select()
+      .from(users)
+      .where(like(users.email, '%@sandbox.com'))
+      .limit(50);
+
+    // Manually join customer data
+    const testCustomers = await Promise.all(
+      testUsersResult.map(async (user) => {
+        const customerResult = await db.select()
+          .from(customers)
+          .where(eq(customers.userId, user.id))
+          .limit(1);
+        
+        return {
+          ...user,
+          customer: customerResult[0] || null
+        };
+      })
+    );
 
     res.json({
-      transactions: testTransactions,
+      transactions: testTransactionsResult,
       customers: testCustomers,
       sandbox: true
     });

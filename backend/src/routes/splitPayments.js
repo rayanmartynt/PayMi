@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc, and } = require('drizzle-orm');
+const { merchants, transactions, splitPayments, splitPaymentParts } = require('../db/schema');
 const { auth, merchantAuth } = require('../middleware/auth');
 
 /**
@@ -10,41 +12,46 @@ const { auth, merchantAuth } = require('../middleware/auth');
 router.post('/', merchantAuth, async (req, res) => {
   try {
     const { totalAmount, currency = 'SLE', splits, expiresAt, metadata } = req.body;
-    const merchant = req.merchant;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
 
     if (!totalAmount || !splits || !Array.isArray(splits)) {
       return res.status(400).json({ error: 'Total amount and splits array are required' });
     }
 
     // Validate splits
-    const splitTotal = splits.reduce((sum, split) => sum + split.amount, 0);
-    if (Math.abs(splitTotal - totalAmount) > 0.01) {
+    const splitTotal = splits.reduce((sum, split) => sum + parseFloat(split.amount), 0);
+    if (Math.abs(splitTotal - parseFloat(totalAmount)) > 0.01) {
       return res.status(400).json({ error: 'Split amounts must equal total amount' });
     }
 
     // Create split payment
-    const splitPayment = await prisma.splitPayment.create({
-      data: {
-        merchantId: merchant.id,
-        totalAmount: parseFloat(totalAmount),
-        currency,
-        reference: `SPLIT_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        expiresAt: expiresAt ? new Date(expiresAt) : null,
-        metadata: metadata ? JSON.stringify(metadata) : null
-      }
-    });
+    const splitPaymentResult = await db.insert(splitPayments).values({
+      merchantId: merchant.id,
+      totalAmount: parseFloat(totalAmount).toString(),
+      currency,
+      reference: `SPLIT_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      metadata: metadata ? JSON.stringify(metadata) : null
+    }).returning();
+    
+    const splitPayment = splitPaymentResult[0];
 
     // Create split parts
-    const splitParts = await Promise.all(splits.map(split => 
-      prisma.splitPaymentPart.create({
-        data: {
-          splitPaymentId: splitPayment.id,
-          recipientId: split.recipientId,
-          recipientType: split.recipientType || 'MERCHANT',
-          amount: parseFloat(split.amount)
-        }
-      })
+    const splitPartsResults = await Promise.all(splits.map(split => 
+      db.insert(splitPaymentParts).values({
+        splitPaymentId: splitPayment.id,
+        recipientId: split.recipientId,
+        recipientType: split.recipientType || 'MERCHANT',
+        amount: parseFloat(split.amount).toString()
+      }).returning()
     ));
+    
+    const splitParts = splitPartsResults.map(r => r[0]);
 
     res.status(201).json({
       message: 'Split payment created successfully',
@@ -65,23 +72,39 @@ router.post('/', merchantAuth, async (req, res) => {
  */
 router.get('/', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const { status } = req.query;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const where = { merchantId: merchant.id };
-    if (status) {
-      where.status = status;
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
     }
 
-    const splitPayments = await prisma.splitPayment.findMany({
-      where,
-      include: {
-        splits: true
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    const { status } = req.query;
 
-    res.json({ splitPayments });
+    let whereCondition = eq(splitPayments.merchantId, merchant.id);
+    if (status) {
+      whereCondition = and(eq(splitPayments.merchantId, merchant.id), eq(splitPayments.status, status));
+    }
+
+    const splitPaymentsResult = await db.select()
+      .from(splitPayments)
+      .where(whereCondition)
+      .orderBy(desc(splitPayments.createdAt));
+
+    // Get splits for each payment
+    const splitPaymentsWithSplits = await Promise.all(
+      splitPaymentsResult.map(async (sp) => {
+        const splitsResult = await db.select()
+          .from(splitPaymentParts)
+          .where(eq(splitPaymentParts.splitPaymentId, sp.id));
+        return {
+          ...sp,
+          splits: splitsResult
+        };
+      })
+    );
+
+    res.json({ splitPayments: splitPaymentsWithSplits });
   } catch (error) {
     console.error('Get split payments error:', error);
     res.status(500).json({ error: 'Failed to get split payments' });
@@ -94,22 +117,30 @@ router.get('/', merchantAuth, async (req, res) => {
  */
 router.get('/:id', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const splitPayment = await prisma.splitPayment.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      },
-      include: {
-        splits: true
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const splitPaymentResult = await db.select()
+      .from(splitPayments)
+      .where(and(eq(splitPayments.id, req.params.id), eq(splitPayments.merchantId, merchant.id)))
+      .limit(1);
+    
+    const splitPayment = splitPaymentResult[0];
 
     if (!splitPayment) {
       return res.status(404).json({ error: 'Split payment not found' });
     }
 
-    res.json({ splitPayment });
+    // Get splits
+    const splitsResult = await db.select()
+      .from(splitPaymentParts)
+      .where(eq(splitPaymentParts.splitPaymentId, splitPayment.id));
+
+    res.json({ splitPayment: { ...splitPayment, splits: splitsResult } });
   } catch (error) {
     console.error('Get split payment error:', error);
     res.status(500).json({ error: 'Failed to get split payment' });
@@ -122,16 +153,19 @@ router.get('/:id', merchantAuth, async (req, res) => {
  */
 router.post('/:id/execute', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const splitPayment = await prisma.splitPayment.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      },
-      include: {
-        splits: true
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const splitPaymentResult = await db.select()
+      .from(splitPayments)
+      .where(and(eq(splitPayments.id, req.params.id), eq(splitPayments.merchantId, merchant.id)))
+      .limit(1);
+    
+    const splitPayment = splitPaymentResult[0];
 
     if (!splitPayment) {
       return res.status(404).json({ error: 'Split payment not found' });
@@ -145,39 +179,43 @@ router.post('/:id/execute', merchantAuth, async (req, res) => {
       return res.status(400).json({ error: 'Split payment has expired' });
     }
 
+    // Get splits
+    const splitsResult = await db.select()
+      .from(splitPaymentParts)
+      .where(eq(splitPaymentParts.splitPaymentId, splitPayment.id));
+
     // Execute each split
     const results = [];
     let allSuccessful = true;
 
-    for (const split of splitPayment.splits) {
+    for (const split of splitsResult) {
       try {
         // Create transaction for each split
-        const transaction = await prisma.transaction.create({
-          data: {
-            merchantId: merchant.id,
-            amount: split.amount,
-            currency: splitPayment.currency,
-            paymentMethod: 'SPLIT_PAYMENT',
-            status: 'SUCCESSFUL',
-            description: `Split payment part`,
-            reference: `SPLIT_PART_${split.id}_${Date.now()}`,
-            metadata: JSON.stringify({ 
-              splitPaymentId: splitPayment.id,
-              splitPartId: split.id,
-              recipientId: split.recipientId,
-              recipientType: split.recipientType
-            })
-          }
-        });
+        const transactionResult = await db.insert(transactions).values({
+          merchantId: merchant.id,
+          amount: split.amount,
+          currency: splitPayment.currency,
+          paymentMethod: 'SPLIT_PAYMENT',
+          status: 'SUCCESSFUL',
+          description: `Split payment part`,
+          reference: `SPLIT_PART_${split.id}_${Date.now()}`,
+          metadata: JSON.stringify({ 
+            splitPaymentId: splitPayment.id,
+            splitPartId: split.id,
+            recipientId: split.recipientId,
+            recipientType: split.recipientType
+          })
+        }).returning();
+        
+        const transaction = transactionResult[0];
 
         // Update split part status
-        await prisma.splitPaymentPart.update({
-          where: { id: split.id },
-          data: {
+        await db.update(splitPaymentParts)
+          .set({
             status: 'COMPLETED',
             transactionId: transaction.id
-          }
-        });
+          })
+          .where(eq(splitPaymentParts.id, split.id));
 
         results.push({
           splitId: split.id,
@@ -186,10 +224,9 @@ router.post('/:id/execute', merchantAuth, async (req, res) => {
         });
       } catch (error) {
         console.error(`Failed to execute split ${split.id}:`, error);
-        await prisma.splitPaymentPart.update({
-          where: { id: split.id },
-          data: { status: 'FAILED' }
-        });
+        await db.update(splitPaymentParts)
+          .set({ status: 'FAILED' })
+          .where(eq(splitPaymentParts.id, split.id));
         results.push({
           splitId: split.id,
           status: 'FAILED',
@@ -200,12 +237,11 @@ router.post('/:id/execute', merchantAuth, async (req, res) => {
     }
 
     // Update split payment status
-    await prisma.splitPayment.update({
-      where: { id: splitPayment.id },
-      data: {
+    await db.update(splitPayments)
+      .set({
         status: allSuccessful ? 'COMPLETED' : 'FAILED'
-      }
-    });
+      })
+      .where(eq(splitPayments.id, splitPayment.id));
 
     res.json({
       message: 'Split payment executed',
@@ -225,13 +261,19 @@ router.post('/:id/execute', merchantAuth, async (req, res) => {
  */
 router.post('/:id/cancel', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const splitPayment = await prisma.splitPayment.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const splitPaymentResult = await db.select()
+      .from(splitPayments)
+      .where(and(eq(splitPayments.id, req.params.id), eq(splitPayments.merchantId, merchant.id)))
+      .limit(1);
+    
+    const splitPayment = splitPaymentResult[0];
 
     if (!splitPayment) {
       return res.status(404).json({ error: 'Split payment not found' });
@@ -242,16 +284,17 @@ router.post('/:id/cancel', merchantAuth, async (req, res) => {
     }
 
     // Cancel all split parts
-    await prisma.splitPaymentPart.updateMany({
-      where: { splitPaymentId: splitPayment.id },
-      data: { status: 'FAILED' }
-    });
+    await db.update(splitPaymentParts)
+      .set({ status: 'FAILED' })
+      .where(eq(splitPaymentParts.splitPaymentId, splitPayment.id));
 
     // Update split payment status
-    const updated = await prisma.splitPayment.update({
-      where: { id: splitPayment.id },
-      data: { status: 'FAILED' }
-    });
+    const updatedResult = await db.update(splitPayments)
+      .set({ status: 'FAILED' })
+      .where(eq(splitPayments.id, splitPayment.id))
+      .returning();
+    
+    const updated = updatedResult[0];
 
     res.json({
       message: 'Split payment cancelled successfully',

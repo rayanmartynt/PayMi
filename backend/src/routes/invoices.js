@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc, and } = require('drizzle-orm');
+const { merchants, transactions, invoices } = require('../db/schema');
 const { auth, merchantAuth } = require('../middleware/auth');
 
 /**
@@ -21,24 +23,29 @@ const generateInvoiceNumber = () => {
 router.post('/', merchantAuth, async (req, res) => {
   try {
     const { customerId, amount, currency = 'SLE', items, notes, dueDate } = req.body;
-    const merchant = req.merchant;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
 
     if (!amount || !items || !Array.isArray(items)) {
       return res.status(400).json({ error: 'Amount and items array are required' });
     }
 
-    const invoice = await prisma.invoice.create({
-      data: {
-        merchantId: merchant.id,
-        customerId: customerId || null,
-        invoiceNumber: generateInvoiceNumber(),
-        amount: parseFloat(amount),
-        currency,
-        items: JSON.stringify(items),
-        notes: notes || null,
-        dueDate: dueDate ? new Date(dueDate) : null
-      }
-    });
+    const invoiceResult = await db.insert(invoices).values({
+      merchantId: merchant.id,
+      customerId: customerId || null,
+      invoiceNumber: generateInvoiceNumber(),
+      amount: parseFloat(amount).toString(),
+      currency,
+      items: JSON.stringify(items),
+      notes: notes || null,
+      dueDate: dueDate ? new Date(dueDate) : null
+    }).returning();
+    
+    const invoice = invoiceResult[0];
 
     res.status(201).json({
       message: 'Invoice created successfully',
@@ -56,20 +63,26 @@ router.post('/', merchantAuth, async (req, res) => {
  */
 router.get('/', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const { status } = req.query;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const where = { merchantId: merchant.id };
-    if (status) {
-      where.status = status;
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
     }
 
-    const invoices = await prisma.invoice.findMany({
-      where,
-      orderBy: { createdAt: 'desc' }
-    });
+    const { status } = req.query;
 
-    res.json({ invoices });
+    let whereCondition = eq(invoices.merchantId, merchant.id);
+    if (status) {
+      whereCondition = and(eq(invoices.merchantId, merchant.id), eq(invoices.status, status));
+    }
+
+    const invoicesResult = await db.select()
+      .from(invoices)
+      .where(whereCondition)
+      .orderBy(desc(invoices.createdAt));
+
+    res.json({ invoices: invoicesResult });
   } catch (error) {
     console.error('Get invoices error:', error);
     res.status(500).json({ error: 'Failed to get invoices' });
@@ -82,13 +95,19 @@ router.get('/', merchantAuth, async (req, res) => {
  */
 router.get('/:id', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const invoice = await prisma.invoice.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const invoiceResult = await db.select()
+      .from(invoices)
+      .where(and(eq(invoices.id, req.params.id), eq(invoices.merchantId, merchant.id)))
+      .limit(1);
+    
+    const invoice = invoiceResult[0];
 
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
@@ -107,13 +126,19 @@ router.get('/:id', merchantAuth, async (req, res) => {
  */
 router.post('/:id/send', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const invoice = await prisma.invoice.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const invoiceResult = await db.select()
+      .from(invoices)
+      .where(and(eq(invoices.id, req.params.id), eq(invoices.merchantId, merchant.id)))
+      .limit(1);
+    
+    const invoice = invoiceResult[0];
 
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
@@ -123,10 +148,12 @@ router.post('/:id/send', merchantAuth, async (req, res) => {
       return res.status(400).json({ error: 'Only draft invoices can be sent' });
     }
 
-    const updated = await prisma.invoice.update({
-      where: { id: req.params.id },
-      data: { status: 'SENT' }
-    });
+    const updatedResult = await db.update(invoices)
+      .set({ status: 'SENT' })
+      .where(eq(invoices.id, req.params.id))
+      .returning();
+    
+    const updated = updatedResult[0];
 
     res.json({
       message: 'Invoice sent successfully',
@@ -144,13 +171,19 @@ router.post('/:id/send', merchantAuth, async (req, res) => {
  */
 router.post('/:id/pay', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const invoice = await prisma.invoice.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const invoiceResult = await db.select()
+      .from(invoices)
+      .where(and(eq(invoices.id, req.params.id), eq(invoices.merchantId, merchant.id)))
+      .limit(1);
+    
+    const invoice = invoiceResult[0];
 
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
@@ -160,27 +193,29 @@ router.post('/:id/pay', merchantAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invoice is already paid' });
     }
 
-    const transaction = await prisma.transaction.create({
-      data: {
-        merchantId: merchant.id,
-        customerId: invoice.customerId,
-        amount: invoice.amount,
-        currency: invoice.currency,
-        paymentMethod: 'INVOICE',
-        status: 'SUCCESSFUL',
-        description: `Invoice payment - ${invoice.invoiceNumber}`,
-        reference: `INV_PAY_${invoice.id}_${Date.now()}`,
-        metadata: JSON.stringify({ invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber })
-      }
-    });
+    const transactionResult = await db.insert(transactions).values({
+      merchantId: merchant.id,
+      customerId: invoice.customerId,
+      amount: invoice.amount,
+      currency: invoice.currency,
+      paymentMethod: 'INVOICE',
+      status: 'SUCCESSFUL',
+      description: `Invoice payment - ${invoice.invoiceNumber}`,
+      reference: `INV_PAY_${invoice.id}_${Date.now()}`,
+      metadata: JSON.stringify({ invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber })
+    }).returning();
+    
+    const transaction = transactionResult[0];
 
-    const updated = await prisma.invoice.update({
-      where: { id: req.params.id },
-      data: {
+    const updatedResult = await db.update(invoices)
+      .set({
         status: 'PAID',
         paidAt: new Date()
-      }
-    });
+      })
+      .where(eq(invoices.id, req.params.id))
+      .returning();
+    
+    const updated = updatedResult[0];
 
     if (global.io) {
       global.io.to(merchant.id).emit('invoice', {
@@ -207,13 +242,19 @@ router.post('/:id/pay', merchantAuth, async (req, res) => {
  */
 router.post('/:id/cancel', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const invoice = await prisma.invoice.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const invoiceResult = await db.select()
+      .from(invoices)
+      .where(and(eq(invoices.id, req.params.id), eq(invoices.merchantId, merchant.id)))
+      .limit(1);
+    
+    const invoice = invoiceResult[0];
 
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
@@ -223,10 +264,12 @@ router.post('/:id/cancel', merchantAuth, async (req, res) => {
       return res.status(400).json({ error: 'Cannot cancel paid invoice' });
     }
 
-    const updated = await prisma.invoice.update({
-      where: { id: req.params.id },
-      data: { status: 'CANCELLED' }
-    });
+    const updatedResult = await db.update(invoices)
+      .set({ status: 'CANCELLED' })
+      .where(eq(invoices.id, req.params.id))
+      .returning();
+    
+    const updated = updatedResult[0];
 
     res.json({
       message: 'Invoice cancelled successfully',
@@ -244,13 +287,19 @@ router.post('/:id/cancel', merchantAuth, async (req, res) => {
  */
 router.delete('/:id', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const invoice = await prisma.invoice.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const invoiceResult = await db.select()
+      .from(invoices)
+      .where(and(eq(invoices.id, req.params.id), eq(invoices.merchantId, merchant.id)))
+      .limit(1);
+    
+    const invoice = invoiceResult[0];
 
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
@@ -260,9 +309,7 @@ router.delete('/:id', merchantAuth, async (req, res) => {
       return res.status(400).json({ error: 'Only draft invoices can be deleted' });
     }
 
-    await prisma.invoice.delete({
-      where: { id: req.params.id }
-    });
+    await db.delete(invoices).where(eq(invoices.id, req.params.id));
 
     res.json({ message: 'Invoice deleted successfully' });
   } catch (error) {

@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc, and } = require('drizzle-orm');
+const { loyaltyAccounts, loyaltyRewards, loyaltyRedemptions } = require('../db/schema');
 const { auth } = require('../middleware/auth');
 
 /**
@@ -18,18 +20,21 @@ router.get('/account', auth, async (req, res) => {
   try {
     const user = req.user;
 
-    let loyaltyAccount = await prisma.loyaltyAccount.findFirst({
-      where: { userId: user.id }
-    });
+    let loyaltyAccountResult = await db.select()
+      .from(loyaltyAccounts)
+      .where(eq(loyaltyAccounts.userId, user.id))
+      .limit(1);
+    
+    let loyaltyAccount = loyaltyAccountResult[0];
 
     if (!loyaltyAccount) {
-      loyaltyAccount = await prisma.loyaltyAccount.create({
-        data: {
-          userId: user.id,
-          points: 0,
-          tier: 'BRONZE'
-        }
-      });
+      const loyaltyAccountResult = await db.insert(loyaltyAccounts).values({
+        userId: user.id,
+        points: 0,
+        tier: 'BRONZE'
+      }).returning();
+      
+      loyaltyAccount = loyaltyAccountResult[0];
     }
 
     res.json({ loyaltyAccount });
@@ -45,12 +50,12 @@ router.get('/account', auth, async (req, res) => {
  */
 router.get('/rewards', async (req, res) => {
   try {
-    const rewards = await prisma.loyaltyReward.findMany({
-      where: { active: true },
-      orderBy: { pointsRequired: 'asc' }
-    });
+    const rewardsResult = await db.select()
+      .from(loyaltyRewards)
+      .where(eq(loyaltyRewards.active, true))
+      .orderBy(loyaltyRewards.pointsRequired);
 
-    res.json({ rewards });
+    res.json({ rewards: rewardsResult });
   } catch (error) {
     console.error('Get loyalty rewards error:', error);
     res.status(500).json({ error: 'Failed to get loyalty rewards' });
@@ -66,17 +71,23 @@ router.post('/redeem', auth, async (req, res) => {
     const { rewardId } = req.body;
     const user = req.user;
 
-    const loyaltyAccount = await prisma.loyaltyAccount.findFirst({
-      where: { userId: user.id }
-    });
+    const loyaltyAccountResult = await db.select()
+      .from(loyaltyAccounts)
+      .where(eq(loyaltyAccounts.userId, user.id))
+      .limit(1);
+    
+    const loyaltyAccount = loyaltyAccountResult[0];
 
     if (!loyaltyAccount) {
       return res.status(404).json({ error: 'Loyalty account not found' });
     }
 
-    const reward = await prisma.loyaltyReward.findUnique({
-      where: { id: rewardId }
-    });
+    const rewardResult = await db.select()
+      .from(loyaltyRewards)
+      .where(eq(loyaltyRewards.id, rewardId))
+      .limit(1);
+    
+    const reward = rewardResult[0];
 
     if (!reward || !reward.active) {
       return res.status(404).json({ error: 'Reward not found or inactive' });
@@ -87,22 +98,19 @@ router.post('/redeem', auth, async (req, res) => {
     }
 
     // Deduct points
-    await prisma.loyaltyAccount.update({
-      where: { id: loyaltyAccount.id },
-      data: {
-        points: { decrement: reward.pointsRequired }
-      }
-    });
+    await db.update(loyaltyAccounts)
+      .set({ points: loyaltyAccount.points - reward.pointsRequired })
+      .where(eq(loyaltyAccounts.id, loyaltyAccount.id));
 
     // Create redemption record
-    const redemption = await prisma.loyaltyRedemption.create({
-      data: {
-        loyaltyAccountId: loyaltyAccount.id,
-        rewardId,
-        pointsUsed: reward.pointsRequired,
-        status: 'COMPLETED'
-      }
-    });
+    const redemptionResult = await db.insert(loyaltyRedemptions).values({
+      loyaltyAccountId: loyaltyAccount.id,
+      rewardId,
+      pointsUsed: reward.pointsRequired,
+      status: 'COMPLETED'
+    }).returning();
+    
+    const redemption = redemptionResult[0];
 
     // Update tier based on remaining points
     await updateLoyaltyTier(loyaltyAccount.id);
@@ -126,23 +134,37 @@ router.get('/redemptions', auth, async (req, res) => {
   try {
     const user = req.user;
 
-    const loyaltyAccount = await prisma.loyaltyAccount.findFirst({
-      where: { userId: user.id }
-    });
+    const loyaltyAccountResult = await db.select()
+      .from(loyaltyAccounts)
+      .where(eq(loyaltyAccounts.userId, user.id))
+      .limit(1);
+    
+    const loyaltyAccount = loyaltyAccountResult[0];
 
     if (!loyaltyAccount) {
       return res.json({ redemptions: [] });
     }
 
-    const redemptions = await prisma.loyaltyRedemption.findMany({
-      where: { loyaltyAccountId: loyaltyAccount.id },
-      include: {
-        reward: true
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    const redemptionsResult = await db.select()
+      .from(loyaltyRedemptions)
+      .where(eq(loyaltyRedemptions.loyaltyAccountId, loyaltyAccount.id))
+      .orderBy(desc(loyaltyRedemptions.createdAt));
 
-    res.json({ redemptions });
+    // Get reward details for each redemption
+    const redemptionsWithRewards = await Promise.all(
+      redemptionsResult.map(async (redemption) => {
+        const rewardResult = await db.select()
+          .from(loyaltyRewards)
+          .where(eq(loyaltyRewards.id, redemption.rewardId))
+          .limit(1);
+        return {
+          ...redemption,
+          reward: rewardResult[0] || null
+        };
+      })
+    );
+
+    res.json({ redemptions: redemptionsWithRewards });
   } catch (error) {
     console.error('Get redemptions error:', error);
     res.status(500).json({ error: 'Failed to get redemptions' });
@@ -162,28 +184,28 @@ router.post('/add-points', auth, async (req, res) => {
       return res.status(400).json({ error: 'Amount is required' });
     }
 
-    let loyaltyAccount = await prisma.loyaltyAccount.findFirst({
-      where: { userId: user.id }
-    });
+    let loyaltyAccountResult = await db.select()
+      .from(loyaltyAccounts)
+      .where(eq(loyaltyAccounts.userId, user.id))
+      .limit(1);
+    
+    let loyaltyAccount = loyaltyAccountResult[0];
 
     if (!loyaltyAccount) {
-      loyaltyAccount = await prisma.loyaltyAccount.create({
-        data: {
-          userId: user.id,
-          points: 0n,
-          tier: 'BRONZE'
-        }
-      });
+      const loyaltyAccountResult = await db.insert(loyaltyAccounts).values({
+        userId: user.id,
+        points: 0,
+        tier: 'BRONZE'
+      }).returning();
+      
+      loyaltyAccount = loyaltyAccountResult[0];
     }
 
     const pointsToAdd = calculatePoints(parseFloat(amount));
 
-    await prisma.loyaltyAccount.update({
-      where: { id: loyaltyAccount.id },
-      data: {
-        points: { increment: pointsToAdd }
-      }
-    });
+    await db.update(loyaltyAccounts)
+      .set({ points: loyaltyAccount.points + pointsToAdd })
+      .where(eq(loyaltyAccounts.id, loyaltyAccount.id));
 
     // Update tier
     await updateLoyaltyTier(loyaltyAccount.id);
@@ -202,19 +224,21 @@ router.post('/add-points', auth, async (req, res) => {
  * Update loyalty tier based on points
  */
 async function updateLoyaltyTier(loyaltyAccountId) {
-  const account = await prisma.loyaltyAccount.findUnique({
-    where: { id: loyaltyAccountId }
-  });
+  const accountResult = await db.select()
+    .from(loyaltyAccounts)
+    .where(eq(loyaltyAccounts.id, loyaltyAccountId))
+    .limit(1);
+  
+  const account = accountResult[0];
 
   let tier = 'BRONZE';
   if (account.points >= 10000) tier = 'GOLD';
   else if (account.points >= 5000) tier = 'SILVER';
 
   if (tier !== account.tier) {
-    await prisma.loyaltyAccount.update({
-      where: { id: loyaltyAccountId },
-      data: { tier }
-    });
+    await db.update(loyaltyAccounts)
+      .set({ tier })
+      .where(eq(loyaltyAccounts.id, loyaltyAccountId));
   }
 }
 

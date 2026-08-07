@@ -4,18 +4,24 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const db = require('../db/index');
-const { eq, and } = require('drizzle-orm');
+const { eq, and, gt } = require('drizzle-orm');
 const { users, merchants, customers, refreshTokens } = require('../db/schema');
 const { auth } = require('../middleware/auth');
 const { authLimiter } = require('../server');
 const { createAuditLog, AUDIT_ACTIONS } = require('../services/auditLog');
 const { passport, generateOAuthToken } = require('../services/oauth');
+const { sendVerificationEmail } = require('../services/email');
 
 const router = express.Router();
 
 // Generate refresh token
 const generateRefreshToken = () => {
   return crypto.randomBytes(40).toString('hex');
+};
+
+// Generate 6-digit verification code
+const generateVerificationCode = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
 // Password validation
@@ -76,11 +82,18 @@ router.post('/register',
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Generate verification code
+    const verificationCode = generateVerificationCode();
+    const verificationCodeExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
     const userResult = await db.insert(users).values({
       email,
       password: hashedPassword,
       name,
-      role: role || 'CUSTOMER'
+      role: role || 'CUSTOMER',
+      emailVerified: false,
+      verificationCode,
+      verificationCodeExpires
     }).returning();
     
     const user = userResult[0];
@@ -102,25 +115,22 @@ router.post('/register',
       });
     }
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '15m' });
-    const refreshToken = generateRefreshToken();
-
-    // Save refresh token to database (reduced to 24 hours)
-    await db.insert(refreshTokens).values({
-      token: refreshToken,
-      userId: user.id,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
-    });
+    // Send verification email
+    try {
+      await sendVerificationEmail(email, verificationCode);
+    } catch (emailError) {
+      console.error('Failed to send verification email:', emailError);
+      // Continue with registration even if email fails
+    }
 
     res.status(201).json({
-      message: 'User registered successfully',
-      token,
-      refreshToken,
+      message: 'User registered successfully. Please check your email for verification code.',
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.role
+        role: user.role,
+        emailVerified: false
       }
     });
 
@@ -136,6 +146,136 @@ router.post('/register',
   } catch (error) {
     console.error('Register error:', error);
     res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+// Verify Email
+router.post('/verify-email',
+  authLimiter,
+  [
+    body('email').isEmail().normalizeEmail().withMessage('Invalid email address'),
+    body('code').isLength({ min: 6, max: 6 }).withMessage('Verification code must be 6 digits')
+  ],
+  async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, code } = req.body;
+
+    const userResult = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    const user = userResult[0];
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.emailVerified) {
+      return res.status(400).json({ error: 'Email already verified' });
+    }
+
+    // Check if code matches and is not expired
+    if (user.verificationCode !== code) {
+      return res.status(400).json({ error: 'Invalid verification code' });
+    }
+
+    if (!user.verificationCodeExpires || new Date(user.verificationCodeExpires) < new Date()) {
+      return res.status(400).json({ error: 'Verification code has expired' });
+    }
+
+    // Mark email as verified
+    await db.update(users)
+      .set({ 
+        emailVerified: true,
+        verificationCode: null,
+        verificationCodeExpires: null
+      })
+      .where(eq(users.id, user.id));
+
+    // Generate tokens after verification
+    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '15m' });
+    const refreshToken = generateRefreshToken();
+
+    await db.insert(refreshTokens).values({
+      token: refreshToken,
+      userId: user.id,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+    });
+
+    // Audit log
+    await createAuditLog(
+      AUDIT_ACTIONS.EMAIL_VERIFIED,
+      user.id,
+      user.role,
+      { email: user.email },
+      req.ip,
+      req.headers['user-agent']
+    );
+
+    res.json({
+      message: 'Email verified successfully',
+      token,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        emailVerified: true
+      }
+    });
+  } catch (error) {
+    console.error('Verify email error:', error);
+    res.status(500).json({ error: 'Email verification failed' });
+  }
+});
+
+// Resend Verification Code
+router.post('/resend-verification',
+  authLimiter,
+  [
+    body('email').isEmail().normalizeEmail().withMessage('Invalid email address')
+  ],
+  async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email } = req.body;
+
+    const userResult = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    const user = userResult[0];
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.emailVerified) {
+      return res.status(400).json({ error: 'Email already verified' });
+    }
+
+    // Generate new verification code
+    const verificationCode = generateVerificationCode();
+    const verificationCodeExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+    await db.update(users)
+      .set({ 
+        verificationCode,
+        verificationCodeExpires
+      })
+      .where(eq(users.id, user.id));
+
+    // Send verification email
+    await sendVerificationEmail(email, verificationCode);
+
+    res.json({ message: 'Verification code sent successfully' });
+  } catch (error) {
+    console.error('Resend verification error:', error);
+    res.status(500).json({ error: 'Failed to resend verification code' });
   }
 });
 
@@ -166,6 +306,14 @@ router.post('/login',
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Check if email is verified
+    if (!user.emailVerified) {
+      return res.status(403).json({ 
+        error: 'Email not verified. Please verify your email first.',
+        requiresEmailVerification: true 
+      });
     }
 
     // Get merchant and customer data

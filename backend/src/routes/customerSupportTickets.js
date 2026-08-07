@@ -1,6 +1,8 @@
 const express = require('express');
 const { customerAuth } = require('../middleware/auth');
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc, and } = require('drizzle-orm');
+const { customers, supportTickets } = require('../db/schema');
 
 const router = express.Router();
 
@@ -8,29 +10,35 @@ const router = express.Router();
 router.get('/', customerAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20, status } = req.query;
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
     
-    const customer = await prisma.customer.findUnique({
-      where: { userId: req.user.id }
-    });
+    const customerResult = await db.select()
+      .from(customers)
+      .where(eq(customers.userId, req.user.id))
+      .limit(1);
+    
+    const customer = customerResult[0];
 
-    const where = {
-      customerId: customer.id,
-      ...(status ? { status } : {})
-    };
+    let whereCondition = eq(supportTickets.customerId, customer.id);
+    if (status) {
+      whereCondition = and(eq(supportTickets.customerId, customer.id), eq(supportTickets.status, status));
+    }
 
-    const [tickets, total] = await Promise.all([
-      prisma.supportTicket.findMany({
-        where,
-        skip,
-        take: parseInt(limit),
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.supportTicket.count({ where })
-    ]);
+    const ticketsResult = await db.select()
+      .from(supportTickets)
+      .where(whereCondition)
+      .orderBy(desc(supportTickets.createdAt))
+      .limit(parseInt(limit))
+      .offset(offset);
+
+    const totalResult = await db.select()
+      .from(supportTickets)
+      .where(whereCondition);
+    
+    const total = totalResult.length;
 
     res.json({
-      tickets,
+      tickets: ticketsResult,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -48,19 +56,22 @@ router.get('/', customerAuth, async (req, res) => {
 router.post('/', customerAuth, async (req, res) => {
   try {
     const { subject, message, priority } = req.body;
-    const customer = await prisma.customer.findUnique({
-      where: { userId: req.user.id }
-    });
+    const customerResult = await db.select()
+      .from(customers)
+      .where(eq(customers.userId, req.user.id))
+      .limit(1);
+    
+    const customer = customerResult[0];
 
-    const ticket = await prisma.supportTicket.create({
-      data: {
-        customerId: customer.id,
-        subject,
-        message,
-        priority: priority || 'MEDIUM',
-        status: 'OPEN'
-      }
-    });
+    const ticketResult = await db.insert(supportTickets).values({
+      customerId: customer.id,
+      subject,
+      message,
+      priority: priority || 'MEDIUM',
+      status: 'OPEN'
+    }).returning();
+    
+    const ticket = ticketResult[0];
 
     res.json(ticket);
   } catch (error) {

@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc, and, lte } = require('drizzle-orm');
+const { merchants, transactions, subscriptions } = require('../db/schema');
 const { auth, merchantAuth } = require('../middleware/auth');
 
 /**
@@ -10,7 +12,12 @@ const { auth, merchantAuth } = require('../middleware/auth');
 router.post('/', merchantAuth, async (req, res) => {
   try {
     const { customerId, amount, currency = 'SLE', interval, metadata } = req.body;
-    const merchant = req.merchant;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
 
     if (!customerId || !amount || !interval) {
       return res.status(400).json({ error: 'Customer ID, amount, and interval are required' });
@@ -39,17 +46,17 @@ router.post('/', merchantAuth, async (req, res) => {
         break;
     }
 
-    const subscription = await prisma.subscription.create({
-      data: {
-        merchantId: merchant.id,
-        customerId,
-        amount: parseFloat(amount),
-        currency,
-        interval,
-        nextBilling,
-        metadata: metadata ? JSON.stringify(metadata) : null
-      }
-    });
+    const subscriptionResult = await db.insert(subscriptions).values({
+      merchantId: merchant.id,
+      customerId,
+      amount: parseFloat(amount).toString(),
+      currency,
+      interval,
+      nextBilling,
+      metadata: metadata ? JSON.stringify(metadata) : null
+    }).returning();
+    
+    const subscription = subscriptionResult[0];
 
     res.status(201).json({
       message: 'Subscription created successfully',
@@ -67,23 +74,26 @@ router.post('/', merchantAuth, async (req, res) => {
  */
 router.get('/', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const { status } = req.query;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const where = { merchantId: merchant.id };
-    if (status) {
-      where.status = status;
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
     }
 
-    const subscriptions = await prisma.subscription.findMany({
-      where,
-      include: {
-        // Note: Customer relation not in schema, would need to add
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    const { status } = req.query;
 
-    res.json({ subscriptions });
+    let whereCondition = eq(subscriptions.merchantId, merchant.id);
+    if (status) {
+      whereCondition = and(eq(subscriptions.merchantId, merchant.id), eq(subscriptions.status, status));
+    }
+
+    const subscriptionsResult = await db.select()
+      .from(subscriptions)
+      .where(whereCondition)
+      .orderBy(desc(subscriptions.createdAt));
+
+    res.json({ subscriptions: subscriptionsResult });
   } catch (error) {
     console.error('Get subscriptions error:', error);
     res.status(500).json({ error: 'Failed to get subscriptions' });
@@ -96,13 +106,19 @@ router.get('/', merchantAuth, async (req, res) => {
  */
 router.get('/:id', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const subscription = await prisma.subscription.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const subscriptionResult = await db.select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.id, req.params.id), eq(subscriptions.merchantId, merchant.id)))
+      .limit(1);
+    
+    const subscription = subscriptionResult[0];
 
     if (!subscription) {
       return res.status(404).json({ error: 'Subscription not found' });
@@ -121,13 +137,19 @@ router.get('/:id', merchantAuth, async (req, res) => {
  */
 router.post('/:id/pause', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const subscription = await prisma.subscription.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const subscriptionResult = await db.select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.id, req.params.id), eq(subscriptions.merchantId, merchant.id)))
+      .limit(1);
+    
+    const subscription = subscriptionResult[0];
 
     if (!subscription) {
       return res.status(404).json({ error: 'Subscription not found' });
@@ -137,10 +159,12 @@ router.post('/:id/pause', merchantAuth, async (req, res) => {
       return res.status(400).json({ error: 'Only active subscriptions can be paused' });
     }
 
-    const updated = await prisma.subscription.update({
-      where: { id: req.params.id },
-      data: { status: 'PAUSED' }
-    });
+    const updatedResult = await db.update(subscriptions)
+      .set({ status: 'PAUSED' })
+      .where(eq(subscriptions.id, req.params.id))
+      .returning();
+    
+    const updated = updatedResult[0];
 
     res.json({
       message: 'Subscription paused successfully',
@@ -158,13 +182,19 @@ router.post('/:id/pause', merchantAuth, async (req, res) => {
  */
 router.post('/:id/resume', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const subscription = await prisma.subscription.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const subscriptionResult = await db.select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.id, req.params.id), eq(subscriptions.merchantId, merchant.id)))
+      .limit(1);
+    
+    const subscription = subscriptionResult[0];
 
     if (!subscription) {
       return res.status(404).json({ error: 'Subscription not found' });
@@ -191,13 +221,15 @@ router.post('/:id/resume', merchantAuth, async (req, res) => {
         break;
     }
 
-    const updated = await prisma.subscription.update({
-      where: { id: req.params.id },
-      data: { 
+    const updatedResult = await db.update(subscriptions)
+      .set({ 
         status: 'ACTIVE',
         nextBilling
-      }
-    });
+      })
+      .where(eq(subscriptions.id, req.params.id))
+      .returning();
+    
+    const updated = updatedResult[0];
 
     res.json({
       message: 'Subscription resumed successfully',
@@ -215,13 +247,19 @@ router.post('/:id/resume', merchantAuth, async (req, res) => {
  */
 router.post('/:id/cancel', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const subscription = await prisma.subscription.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const subscriptionResult = await db.select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.id, req.params.id), eq(subscriptions.merchantId, merchant.id)))
+      .limit(1);
+    
+    const subscription = subscriptionResult[0];
 
     if (!subscription) {
       return res.status(404).json({ error: 'Subscription not found' });
@@ -231,10 +269,12 @@ router.post('/:id/cancel', merchantAuth, async (req, res) => {
       return res.status(400).json({ error: 'Subscription is already cancelled' });
     }
 
-    const updated = await prisma.subscription.update({
-      where: { id: req.params.id },
-      data: { status: 'CANCELLED' }
-    });
+    const updatedResult = await db.update(subscriptions)
+      .set({ status: 'CANCELLED' })
+      .where(eq(subscriptions.id, req.params.id))
+      .returning();
+    
+    const updated = updatedResult[0];
 
     res.json({
       message: 'Subscription cancelled successfully',
@@ -259,35 +299,29 @@ router.post('/process-billing', auth, async (req, res) => {
 
     // Get all active subscriptions due for billing
     const now = new Date();
-    const dueSubscriptions = await prisma.subscription.findMany({
-      where: {
-        status: 'ACTIVE',
-        nextBilling: { lte: now }
-      },
-      include: {
-        // Would need customer relation
-      }
-    });
+    const dueSubscriptionsResult = await db.select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.status, 'ACTIVE'), lte(subscriptions.nextBilling, now)));
 
     let processed = 0;
     let failed = 0;
 
-    for (const subscription of dueSubscriptions) {
+    for (const subscription of dueSubscriptionsResult) {
       try {
         // Create transaction for subscription payment
-        const transaction = await prisma.transaction.create({
-          data: {
-            merchantId: subscription.merchantId,
-            customerId: subscription.customerId,
-            amount: subscription.amount,
-            currency: subscription.currency,
-            paymentMethod: 'SUBSCRIPTION',
-            status: 'SUCCESSFUL',
-            description: `Subscription payment - ${subscription.interval}`,
-            reference: `SUB_${subscription.id}_${Date.now()}`,
-            metadata: JSON.stringify({ subscriptionId: subscription.id })
-          }
-        });
+        const transactionResult = await db.insert(transactions).values({
+          merchantId: subscription.merchantId,
+          customerId: subscription.customerId,
+          amount: subscription.amount,
+          currency: subscription.currency,
+          paymentMethod: 'SUBSCRIPTION',
+          status: 'SUCCESSFUL',
+          description: `Subscription payment - ${subscription.interval}`,
+          reference: `SUB_${subscription.id}_${Date.now()}`,
+          metadata: JSON.stringify({ subscriptionId: subscription.id })
+        }).returning();
+        
+        const transaction = transactionResult[0];
 
         // Update subscription next billing date
         const nextBilling = new Date(subscription.nextBilling);
@@ -306,13 +340,12 @@ router.post('/process-billing', auth, async (req, res) => {
             break;
         }
 
-        await prisma.subscription.update({
-          where: { id: subscription.id },
-          data: {
+        await db.update(subscriptions)
+          .set({
             nextBilling,
             lastPayment: now
-          }
-        });
+          })
+          .where(eq(subscriptions.id, subscription.id));
 
         processed++;
       } catch (error) {
@@ -325,7 +358,7 @@ router.post('/process-billing', auth, async (req, res) => {
       message: 'Billing processed',
       processed,
       failed,
-      total: dueSubscriptions.length
+      total: dueSubscriptionsResult.length
     });
   } catch (error) {
     console.error('Process billing error:', error);

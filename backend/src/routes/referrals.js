@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc, and, isNotNull } = require('drizzle-orm');
+const { users, customers, referrals } = require('../db/schema');
 const { auth } = require('../middleware/auth');
 
 /**
@@ -23,18 +25,21 @@ router.get('/my-code', auth, async (req, res) => {
   try {
     const user = req.user;
 
-    let referral = await prisma.referral.findFirst({
-      where: { referrerId: user.id }
-    });
+    let referralResult = await db.select()
+      .from(referrals)
+      .where(eq(referrals.referrerId, user.id))
+      .limit(1);
+    
+    let referral = referralResult[0];
 
     if (!referral) {
-      referral = await prisma.referral.create({
-        data: {
-          referrerId: user.id,
-          referralCode: generateReferralCode(),
-          commissionRate: 5 // 5% commission
-        }
-      });
+      const referralResult = await db.insert(referrals).values({
+        referrerId: user.id,
+        referralCode: generateReferralCode(),
+        commissionRate: 5 // 5% commission
+      }).returning();
+      
+      referral = referralResult[0];
     }
 
     res.json({ referral });
@@ -50,9 +55,12 @@ router.get('/my-code', auth, async (req, res) => {
  */
 router.get('/validate/:code', async (req, res) => {
   try {
-    const referral = await prisma.referral.findUnique({
-      where: { referralCode: req.params.code }
-    });
+    const referralResult = await db.select()
+      .from(referrals)
+      .where(eq(referrals.referralCode, req.params.code))
+      .limit(1);
+    
+    const referral = referralResult[0];
 
     if (!referral) {
       return res.status(404).json({ error: 'Invalid referral code' });
@@ -74,9 +82,12 @@ router.post('/apply', auth, async (req, res) => {
     const { referralCode } = req.body;
     const user = req.user;
 
-    const referral = await prisma.referral.findUnique({
-      where: { referralCode }
-    });
+    const referralResult = await db.select()
+      .from(referrals)
+      .where(eq(referrals.referralCode, referralCode))
+      .limit(1);
+    
+    const referral = referralResult[0];
 
     if (!referral) {
       return res.status(404).json({ error: 'Invalid referral code' });
@@ -87,31 +98,42 @@ router.post('/apply', auth, async (req, res) => {
     }
 
     // Check if user already referred
-    const existingReferral = await prisma.referral.findFirst({
-      where: { referredUserId: user.id }
-    });
+    const existingReferralResult = await db.select()
+      .from(referrals)
+      .where(eq(referrals.referredUserId, user.id))
+      .limit(1);
+    
+    const existingReferral = existingReferralResult[0];
 
     if (existingReferral) {
       return res.status(400).json({ error: 'Already used a referral code' });
     }
 
     // Update referral with referred user
-    const updated = await prisma.referral.update({
-      where: { id: referral.id },
-      data: {
+    const updatedResult = await db.update(referrals)
+      .set({
         referredUserId: user.id,
         referredAt: new Date()
-      }
-    });
+      })
+      .where(eq(referrals.id, referral.id))
+      .returning();
+    
+    const updated = updatedResult[0];
 
     // Give bonus to referrer
     const bonusAmount = 1000; // 1000 SLE bonus
-    await prisma.customer.update({
-      where: { userId: referral.referrerId },
-      data: {
-        balance: { increment: bonusAmount }
-      }
-    });
+    const customerResult = await db.select()
+      .from(customers)
+      .where(eq(customers.userId, referral.referrerId))
+      .limit(1);
+    
+    const customer = customerResult[0];
+    
+    if (customer) {
+      await db.update(customers)
+        .set({ balance: (parseFloat(customer.balance) + bonusAmount).toString() })
+        .where(eq(customers.userId, referral.referrerId));
+    }
 
     res.json({
       message: 'Referral code applied successfully',
@@ -132,9 +154,12 @@ router.get('/stats', auth, async (req, res) => {
   try {
     const user = req.user;
 
-    const referral = await prisma.referral.findFirst({
-      where: { referrerId: user.id }
-    });
+    const referralResult = await db.select()
+      .from(referrals)
+      .where(eq(referrals.referrerId, user.id))
+      .limit(1);
+    
+    const referral = referralResult[0];
 
     if (!referral) {
       return res.json({
@@ -146,9 +171,11 @@ router.get('/stats', auth, async (req, res) => {
     }
 
     // Get total referrals
-    const totalReferrals = await prisma.referral.count({
-      where: { referrerId: user.id, referredUserId: { not: null } }
-    });
+    const totalReferralsResult = await db.select()
+      .from(referrals)
+      .where(and(eq(referrals.referrerId, user.id), isNotNull(referrals.referredUserId)));
+    
+    const totalReferrals = totalReferralsResult.length;
 
     // Calculate earnings (simplified - in production, track actual commissions)
     const totalEarnings = totalReferrals * 1000; // 1000 SLE per referral
@@ -174,22 +201,31 @@ router.get('/referred-users', auth, async (req, res) => {
   try {
     const user = req.user;
 
-    const referrals = await prisma.referral.findMany({
-      where: { referrerId: user.id, referredUserId: { not: null } },
-      include: {
-        referredUser: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            createdAt: true
-          }
-        }
-      },
-      orderBy: { referredAt: 'desc' }
-    });
+    const referralsResult = await db.select()
+      .from(referrals)
+      .where(and(eq(referrals.referrerId, user.id), isNotNull(referrals.referredUserId)))
+      .orderBy(desc(referrals.referredAt));
 
-    res.json({ referrals });
+    // Get user details for each referral
+    const referralsWithUsers = await Promise.all(
+      referralsResult.map(async (referral) => {
+        const userResult = await db.select()
+          .from(users)
+          .where(eq(users.id, referral.referredUserId))
+          .limit(1);
+        return {
+          ...referral,
+          referredUser: userResult[0] ? {
+            id: userResult[0].id,
+            email: userResult[0].email,
+            name: userResult[0].name,
+            createdAt: userResult[0].createdAt
+          } : null
+        };
+      })
+    );
+
+    res.json({ referrals: referralsWithUsers });
   } catch (error) {
     console.error('Get referred users error:', error);
     res.status(500).json({ error: 'Failed to get referred users' });
