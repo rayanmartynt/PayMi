@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useStore } from '@/store/useStore'
+import Image from 'next/image'
 import { 
   Home, 
   History, 
@@ -34,7 +35,7 @@ const menuItems = [
 
 export function CustomerSidebar() {
   const pathname = usePathname()
-  const { sidebarOpen, toggleSidebar, logout } = useStore()
+  const { sidebarOpen, toggleSidebar, logout, darkMode } = useStore()
 
   return (
     <>
@@ -56,12 +57,20 @@ export function CustomerSidebar() {
         <div className="flex h-full flex-col">
           {/* Logo */}
           <div className="flex h-16 items-center justify-between border-b px-6">
-            <Link href="/customer" className="flex items-center space-x-2">
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600" />
-              <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                PayMi
-              </span>
-            </Link>
+              <Link href="/customer" className="flex items-center space-x-2">
+                <div className="flex items-center gap-3">
+                  <Image
+                    src={darkMode ? "/Dark mode logo.png" : "/Light mode logo.png"}
+                    alt="PayMi Logo"
+                    width={60}
+                    height={20}
+                    priority
+                  />
+                </div>
+                <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  PayMi
+                </span>
+              </Link>
             <Button 
               variant="ghost" 
               size="icon" 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -21,6 +21,13 @@ export default function CustomerTransferPage() {
     description: ''
   })
   const [transferResult, setTransferResult] = useState<any>(null)
+  const [fee, setFee] = useState(0)
+
+  // Calculate fee when amount changes
+  useEffect(() => {
+    const amountValue = parseFloat(formData.amount) || 0
+    setFee(amountValue * 0.03) // 3% fee for customer transfers
+  }, [formData.amount])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -78,9 +85,21 @@ export default function CustomerTransferPage() {
                       <span className="font-medium">{transferResult.receiver.user.email}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Amount:</span>
+                      <span className="text-muted-foreground">Amount Sent:</span>
                       <span className="font-medium">{formatCurrency(transferResult.amount)}</span>
                     </div>
+                    {transferResult.fee > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Fee (3%):</span>
+                        <span className="font-medium text-orange-600">{formatCurrency(transferResult.fee)}</span>
+                      </div>
+                    )}
+                    {transferResult.fee > 0 && (
+                      <div className="flex justify-between font-semibold">
+                        <span>Receiver Received:</span>
+                        <span>{formatCurrency(transferResult.amount - transferResult.fee)}</span>
+                      </div>
+                    )}
                     {transferResult.description && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Description:</span>
@@ -168,6 +187,18 @@ export default function CustomerTransferPage() {
                   required
                   disabled={loading}
                 />
+                {fee > 0 && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">Fee (3%):</span>
+                    <span className="text-orange-600 font-medium">{formatCurrency(fee)}</span>
+                  </div>
+                )}
+                {fee > 0 && (
+                  <div className="flex justify-between text-xs font-medium">
+                    <span>Receiver gets:</span>
+                    <span>{formatCurrency(parseFloat(formData.amount || '0') - fee)}</span>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">

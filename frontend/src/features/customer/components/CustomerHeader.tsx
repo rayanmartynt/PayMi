@@ -5,7 +5,7 @@ import { Bell, Menu, Search, Moon, Sun } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
-import Image from 'next/image'
+
 
 export function CustomerHeader() {
   const { toggleSidebar, sidebarOpen, notifications, user, darkMode, toggleDarkMode } = useStore()
@@ -22,16 +22,6 @@ export function CustomerHeader() {
         >
           <Menu className="h-5 w-5" />
         </Button>
-
-        <div className="flex items-center gap-3">
-          <Image
-            src={darkMode ? "/Dark mode logo.png" : "/Light mode logo.png"}
-            alt="PayMi Logo"
-            width={60}
-            height={20}
-            priority
-          />
-        </div>
 
         <div className="flex-1">
           <div className="relative max-w-md">

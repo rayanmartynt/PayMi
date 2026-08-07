@@ -1,5 +1,7 @@
 const jwt = require('jsonwebtoken');
-const prisma = require('../lib/prisma');
+const db = require('../db/index');
+const { eq } = require('drizzle-orm');
+const { users, merchants, customers } = require('../db/schema');
 
 const auth = async (req, res, next) => {
   try {
@@ -11,17 +13,19 @@ const auth = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      include: {
-        merchant: true,
-        customer: true
-      }
-    });
+    const userResult = await db.select().from(users).where(eq(users.id, decoded.userId)).limit(1);
+    const user = userResult[0];
 
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
     }
+
+    // Get merchant and customer data
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, user.id)).limit(1);
+    const customerResult = await db.select().from(customers).where(eq(customers.userId, user.id)).limit(1);
+
+    user.merchant = merchantResult[0] || null;
+    user.customer = customerResult[0] || null;
 
     req.user = user;
     next();

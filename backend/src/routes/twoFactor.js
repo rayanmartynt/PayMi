@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const twoFactorService = require('../services/twoFactor');
-const prisma = require('../lib/prisma');
+const prisma = require('../db/index');
 const { auth } = require('../middleware/auth');
+const { twoFactorLimiter } = require('../server');
 
 /**
  * Generate 2FA secret for user
@@ -124,7 +125,7 @@ router.post('/disable', auth, async (req, res) => {
  * Verify 2FA token during login
  * POST /api/two-factor/verify
  */
-router.post('/verify', async (req, res) => {
+router.post('/verify', twoFactorLimiter, async (req, res) => {
   try {
     const { email, token, backupCode } = req.body;
 

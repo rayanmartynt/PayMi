@@ -1,17 +1,18 @@
-const prisma = require('../lib/prisma');
+const db = require('../db/index');
+const { eq } = require('drizzle-orm');
+const { customers, users } = require('../db/schema');
 
 const getCustomerProfile = async (req, res) => {
   try {
-    const customer = await prisma.customer.findUnique({
-      where: { userId: req.user.id },
-      include: {
-        user: true
-      }
-    });
+    const customerResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
+    const customer = customerResult[0];
 
     if (!customer) {
       return res.status(404).json({ error: 'Customer not found' });
     }
+
+    const userResult = await db.select().from(users).where(eq(users.id, req.user.id)).limit(1);
+    customer.user = userResult[0];
 
     res.json(customer);
   } catch (error) {
@@ -24,23 +25,20 @@ const updateCustomerProfile = async (req, res) => {
   try {
     const { name, phone, address } = req.body;
 
-    const customer = await prisma.customer.update({
-      where: { userId: req.user.id },
-      data: {
-        name,
-        phone,
-        address
-      },
-      include: {
-        user: true
-      }
-    });
+    const customerResult = await db.update(customers)
+      .set({ name, phone, address })
+      .where(eq(customers.userId, req.user.id))
+      .returning();
+    
+    const customer = customerResult[0];
 
     // Also update user name
-    await prisma.user.update({
-      where: { id: req.user.id },
-      data: { name }
-    });
+    await db.update(users)
+      .set({ name })
+      .where(eq(users.id, req.user.id));
+
+    const userResult = await db.select().from(users).where(eq(users.id, req.user.id)).limit(1);
+    customer.user = userResult[0];
 
     res.json(customer);
   } catch (error) {
@@ -57,15 +55,15 @@ const uploadCustomerProfilePicture = async (req, res) => {
 
     const profilePictureUrl = `/uploads/${req.file.filename}`;
 
-    const customer = await prisma.customer.update({
-      where: { userId: req.user.id },
-      data: {
-        profilePicture: profilePictureUrl
-      },
-      include: {
-        user: true
-      }
-    });
+    const customerResult = await db.update(customers)
+      .set({ profilePicture: profilePictureUrl })
+      .where(eq(customers.userId, req.user.id))
+      .returning();
+    
+    const customer = customerResult[0];
+
+    const userResult = await db.select().from(users).where(eq(users.id, req.user.id)).limit(1);
+    customer.user = userResult[0];
 
     res.json({
       message: 'Profile picture uploaded successfully',

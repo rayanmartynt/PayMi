@@ -6,40 +6,53 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push",
-    "prisma:studio": "prisma studio"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
   },
   "keywords": [
     "payment",
     "api",
-    "express",
-    "prisma"
+    "express"
   ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@prisma/client": "^5.0.0",
-    "axios": "^1.6.0",
+    "amqplib": "^2.0.1",
+    "axios": "^1.8.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
+    "csurf": "^1.11.0",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.36.4",
     "exceljs": "^4.4.0",
-    "express": "^4.18.2",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.4.0",
+    "express-validator": "^7.2.0",
+    "file-type": "^19.0.0",
+    "helmet": "^8.0.0",
     "json2csv": "^6.0.0-alpha.2",
-    "jsonwebtoken": "^9.0.2",
-    "multer": "^1.4.5-lts.1",
-    "nodemailer": "^6.9.4",
-    "pdfkit": "^0.19.1",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.0.0",
+    "nodemailer": "^6.9.16",
+    "passport": "^0.7.0",
+    "passport-facebook": "^3.0.0",
+    "passport-google-oauth20": "^2.0.0",
+    "pdfkit": "^0.16.0",
+    "postgres": "^3.4.5",
     "qrcode": "^1.5.4",
-    "resend": "^3.2.0",
-    "socket.io": "^4.7.2",
+    "redis": "^6.2.0",
+    "resend": "^4.0.1",
+    "socket.io": "^4.8.1",
     "speakeasy": "^2.0.0",
-    "stripe": "^14.0.0",
-    "uuid": "^9.0.0"
+    "stripe": "^17.4.0",
+    "uuid": "^11.1.1",
+    "validator": "^13.12.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
-    "prisma": "^5.0.0"
+    "drizzle-kit": "^0.29.1",
+    "nodemon": "^3.1.9"
   }
 }

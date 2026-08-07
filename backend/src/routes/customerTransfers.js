@@ -1,6 +1,8 @@
 const express = require('express');
 const { customerAuth } = require('../middleware/auth');
-const prisma = require('../lib/prisma');
+const db = require('../db/index');
+const { eq, or, and, desc } = require('drizzle-orm');
+const { customers, users, customerTransfers, adminFees } = require('../db/schema');
 
 const router = express.Router();
 
@@ -8,36 +10,41 @@ const router = express.Router();
 router.get('/', customerAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20, status } = req.query;
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
     
-    const customer = await prisma.customer.findUnique({
-      where: { userId: req.user.id }
-    });
+    const customerResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
+    const customer = customerResult[0];
 
-    const where = {
-      OR: [
-        { senderId: customer.id },
-        { receiverId: customer.id }
-      ],
-      ...(status ? { status } : {})
-    };
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
 
-    const [transfers, total] = await Promise.all([
-      prisma.customerTransfer.findMany({
-        where,
-        include: {
-          sender: { include: { user: true } },
-          receiver: { include: { user: true } }
-        },
-        skip,
-        take: parseInt(limit),
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.customerTransfer.count({ where })
-    ]);
+    const conditions = status 
+      ? and(
+          or(eq(customerTransfers.senderId, customer.id), eq(customerTransfers.receiverId, customer.id)),
+          eq(customerTransfers.status, status)
+        )
+      : or(eq(customerTransfers.senderId, customer.id), eq(customerTransfers.receiverId, customer.id));
+
+    const transfersResult = await db.select({
+      transfer: customerTransfers,
+      sender: { customer: customers, user: users },
+      receiver: { customer: customers, user: users }
+    })
+    .from(customerTransfers)
+    .where(conditions)
+    .orderBy(desc(customerTransfers.createdAt))
+    .limit(parseInt(limit))
+    .offset(offset);
+
+    // Count total
+    const countResult = await db.select({ count: customerTransfers.id })
+      .from(customerTransfers)
+      .where(conditions);
+    const total = countResult.length;
 
     res.json({
-      transfers,
+      transfers: transfersResult,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -55,64 +62,87 @@ router.get('/', customerAuth, async (req, res) => {
 router.post('/', customerAuth, async (req, res) => {
   try {
     const { receiverEmail, amount, description } = req.body;
-    const sender = await prisma.customer.findUnique({
-      where: { userId: req.user.id }
-    });
+    
+    const senderResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
+    const sender = senderResult[0];
+
+    if (!sender) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    // Check KYC status
+    if (!sender.kycVerified) {
+      return res.status(403).json({ error: 'KYC verification required. Please complete your identity verification to transfer funds.' });
+    }
 
     // Find receiver by email
-    const receiverUser = await prisma.user.findUnique({
-      where: { email: receiverEmail },
-      include: { customer: true }
-    });
+    const receiverUserResult = await db.select().from(users).where(eq(users.email, receiverEmail)).limit(1);
+    const receiverUser = receiverUserResult[0];
 
-    if (!receiverUser || !receiverUser.customer) {
+    if (!receiverUser) {
       return res.status(404).json({ error: 'Receiver not found' });
     }
 
-    if (sender.id === receiverUser.customer.id) {
+    const receiverCustomerResult = await db.select().from(customers).where(eq(customers.userId, receiverUser.id)).limit(1);
+    const receiverCustomer = receiverCustomerResult[0];
+
+    if (!receiverCustomer) {
+      return res.status(404).json({ error: 'Receiver customer not found' });
+    }
+
+    if (sender.id === receiverCustomer.id) {
       return res.status(400).json({ error: 'Cannot transfer to yourself' });
     }
 
-    if (sender.balance < amount) {
+    if (parseFloat(sender.balance) < amount) {
       return res.status(400).json({ error: 'Insufficient balance' });
     }
 
     const reference = `TRF-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // Create transfer
-    const transfer = await prisma.customerTransfer.create({
-      data: {
-        senderId: sender.id,
-        receiverId: receiverUser.customer.id,
-        amount,
-        description,
-        reference,
-        status: 'COMPLETED'
-      },
-      include: {
-        sender: { include: { user: true } },
-        receiver: { include: { user: true } }
-      }
-    });
+    // Calculate fee (3% for customer transfers)
+    const fee = amount * 0.03;
+    const amountAfterFee = amount - fee;
 
-    // Update balances
-    await prisma.$transaction([
-      prisma.customer.update({
-        where: { id: sender.id },
-        data: { balance: { decrement: amount } }
-      }),
-      prisma.customer.update({
-        where: { id: receiverUser.customer.id },
-        data: { balance: { increment: amount } }
-      })
-    ]);
+    // Create transfer
+    const transferResult = await db.insert(customerTransfers).values({
+      senderId: sender.id,
+      receiverId: receiverCustomer.id,
+      amount: amount.toString(),
+      fee: fee.toString(),
+      description,
+      reference,
+      status: 'COMPLETED'
+    }).returning();
+
+    const transfer = transferResult[0];
+
+    // Update balances and record fee in transaction
+    await db.transaction(async (tx) => {
+      await tx.update(customers)
+        .set({ balance: (parseFloat(sender.balance) - amount).toString() })
+        .where(eq(customers.id, sender.id));
+      
+      await tx.update(customers)
+        .set({ balance: (parseFloat(receiverCustomer.balance) + amountAfterFee).toString() })
+        .where(eq(customers.id, receiverCustomer.id));
+      
+      // Record admin fee
+      await tx.insert(adminFees).values({
+        type: 'CUSTOMER_TRANSFER',
+        amount: amount.toString(),
+        fee: fee.toString(),
+        currency: 'SLE',
+        referenceId: transfer.id
+      });
+    });
 
     // Notify receiver
     if (global.io) {
       global.io.to(receiverUser.id).emit('transfer_received', {
         transferId: transfer.id,
         amount,
-        sender: sender.user.name
+        sender: sender.name
       });
     }
 
@@ -127,17 +157,16 @@ router.post('/', customerAuth, async (req, res) => {
 router.post('/:id/reverse', customerAuth, async (req, res) => {
   try {
     const { reason } = req.body;
-    const customer = await prisma.customer.findUnique({
-      where: { userId: req.user.id }
-    });
+    
+    const customerResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
+    const customer = customerResult[0];
 
-    const transfer = await prisma.customerTransfer.findUnique({
-      where: { id: req.params.id },
-      include: {
-        sender: { include: { user: true } },
-        receiver: { include: { user: true } }
-      }
-    });
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const transferResult = await db.select().from(customerTransfers).where(eq(customerTransfers.id, req.params.id)).limit(1);
+    const transfer = transferResult[0];
 
     if (!transfer) {
       return res.status(404).json({ error: 'Transfer not found' });
@@ -151,29 +180,34 @@ router.post('/:id/reverse', customerAuth, async (req, res) => {
       return res.status(400).json({ error: 'Can only reverse completed transfers' });
     }
 
+    // Get sender and receiver customers
+    const senderResult = await db.select().from(customers).where(eq(customers.id, transfer.senderId)).limit(1);
+    const receiverResult = await db.select().from(customers).where(eq(customers.id, transfer.receiverId)).limit(1);
+    const sender = senderResult[0];
+    const receiver = receiverResult[0];
+
     // Reverse the transfer
-    await prisma.$transaction([
-      prisma.customer.update({
-        where: { id: transfer.senderId },
-        data: { balance: { increment: transfer.amount } }
-      }),
-      prisma.customer.update({
-        where: { id: transfer.receiverId },
-        data: { balance: { decrement: transfer.amount } }
-      }),
-      prisma.customerTransfer.update({
-        where: { id: req.params.id },
-        data: {
+    await db.transaction(async (tx) => {
+      await tx.update(customers)
+        .set({ balance: (parseFloat(sender.balance) + parseFloat(transfer.amount)).toString() })
+        .where(eq(customers.id, transfer.senderId));
+      
+      await tx.update(customers)
+        .set({ balance: (parseFloat(receiver.balance) - parseFloat(transfer.amount)).toString() })
+        .where(eq(customers.id, transfer.receiverId));
+      
+      await tx.update(customerTransfers)
+        .set({
           status: 'REVERSED',
           reversedAt: new Date(),
           reversalReason: reason
-        }
-      })
-    ]);
+        })
+        .where(eq(customerTransfers.id, req.params.id));
+    });
 
     // Notify receiver
     if (global.io) {
-      global.io.to(transfer.receiver.userId).emit('transfer_reversed', {
+      global.io.to(transfer.receiverId).emit('transfer_reversed', {
         transferId: transfer.id,
         reason
       });

@@ -3,7 +3,9 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { customerAuth } = require('../middleware/auth');
-const prisma = require('../lib/prisma');
+const db = require('../db/index');
+const { eq, desc, and, like, or } = require('drizzle-orm');
+const { customers, transactions, users } = require('../db/schema');
 const {
   getCustomerProfile,
   updateCustomerProfile,
@@ -60,33 +62,34 @@ router.post('/profile/picture', customerAuth, upload.single('profilePicture'), u
 router.get('/analytics', customerAuth, async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    const customer = await prisma.customer.findUnique({
-      where: { userId: req.user.id }
-    });
+    const customerResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
+    const customer = customerResult[0];
 
-    const where = {
-      customerId: customer.id,
-      status: 'SUCCESSFUL'
-    };
-
-    if (startDate || endDate) {
-      where.createdAt = {};
-      if (startDate) where.createdAt.gte = new Date(startDate);
-      if (endDate) where.createdAt.lte = new Date(endDate);
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
     }
 
-    const transactions = await prisma.transaction.findMany({
-      where,
-      orderBy: { createdAt: 'desc' }
-    });
+    let conditions = [eq(transactions.customerId, customer.id), eq(transactions.status, 'SUCCESSFUL')];
+    
+    if (startDate) {
+      conditions.push(eq(transactions.createdAt, new Date(startDate)));
+    }
+    if (endDate) {
+      conditions.push(eq(transactions.createdAt, new Date(endDate)));
+    }
 
-    const totalSpent = transactions.reduce((sum, t) => sum + t.amount, 0);
-    const transactionCount = transactions.length;
+    const transactionsResult = await db.select()
+      .from(transactions)
+      .where(and(...conditions))
+      .orderBy(desc(transactions.createdAt));
+
+    const totalSpent = transactionsResult.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const transactionCount = transactionsResult.length;
 
     res.json({
       totalSpent,
       transactionCount,
-      transactions
+      transactions: transactionsResult
     });
   } catch (error) {
     console.error('Get customer analytics error:', error);
@@ -98,31 +101,31 @@ router.get('/analytics', customerAuth, async (req, res) => {
 router.get('/', customerAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20, search } = req.query;
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
 
-    const where = search ? {
-      OR: [
-        { name: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search } },
-        { user: { email: { contains: search, mode: 'insensitive' } } }
-      ]
-    } : {};
+    let conditions = [];
+    if (search) {
+      conditions.push(
+        or(
+          like(customers.name, `%${search}%`),
+          like(customers.phone, `%${search}%`),
+          like(users.email, `%${search}%`)
+        )
+      );
+    }
 
-    const [customers, total] = await Promise.all([
-      prisma.customer.findMany({
-        where,
-        include: {
-          user: true
-        },
-        skip,
-        take: parseInt(limit),
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.customer.count({ where })
-    ]);
+    const customersResult = await db.select()
+      .from(customers)
+      .leftJoin(users, eq(customers.userId, users.id))
+      .where(and(...conditions))
+      .orderBy(desc(customers.createdAt))
+      .limit(parseInt(limit))
+      .offset(offset);
+
+    const total = customersResult.length;
 
     res.json({
-      customers,
+      customers: customersResult,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),

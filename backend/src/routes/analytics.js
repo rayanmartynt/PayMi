@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const prisma = require('../lib/prisma');
+const prisma = require('../db/index');
 const { auth, merchantAuth, adminAuth } = require('../middleware/auth');
 const { Parser } = require('json2csv');
 const ExcelJS = require('exceljs');

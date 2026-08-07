@@ -113,10 +113,36 @@ const sendKYCStatusEmail = async (email, name, status, rejectionReason = '') => 
   return sendEmail(email, `KYC Verification Status: ${status}`, html);
 };
 
+const sendAccessTokenEmail = async (email, name, accessToken, keyName = 'API Access Token') => {
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #333;">Your ${keyName}</h2>
+      <p>Hi ${name},</p>
+      <p>Your ${keyName} has been generated successfully.</p>
+      <p><strong>Access Token:</strong></p>
+      <div style="background: #f4f4f4; padding: 20px; text-align: center; font-size: 16px; font-family: monospace; word-break: break-all; margin: 20px 0; border: 1px solid #ddd; border-radius: 5px;">
+        ${accessToken}
+      </div>
+      <p style="color: #dc3545;"><strong>Important Security Notice:</strong></p>
+      <ul style="color: #666;">
+        <li>Keep this token secure and do not share it with anyone.</li>
+        <li>This token provides full access to your account.</li>
+        <li>If you suspect this token has been compromised, revoke it immediately from your dashboard.</li>
+        <li>Store this token in a secure location (e.g., password manager).</li>
+      </ul>
+      <p>If you did not request this token, please contact support immediately.</p>
+      <p>Best regards,<br>The PayMi Team</p>
+    </div>
+  `;
+  
+  return sendEmail(email, `Your ${keyName}`, html);
+};
+
 module.exports = {
   sendEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendWelcomeEmail,
-  sendKYCStatusEmail
+  sendKYCStatusEmail,
+  sendAccessTokenEmail
 };

@@ -1,6 +1,8 @@
 const express = require('express');
 const { merchantAuth } = require('../middleware/auth');
-const prisma = require('../lib/prisma');
+const db = require('../db/index');
+const { eq, desc } = require('drizzle-orm');
+const { merchants, apiKeys } = require('../db/schema');
 const crypto = require('crypto');
 
 const router = express.Router();
@@ -8,20 +10,19 @@ const router = express.Router();
 // Get API keys for merchant
 router.get('/', merchantAuth, async (req, res) => {
   try {
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const apiKeys = await prisma.apiKey.findMany({
-      where: { merchantId: merchant.id },
-      orderBy: { createdAt: 'desc' }
-    });
+    const keysResult = await db.select()
+      .from(apiKeys)
+      .where(eq(apiKeys.merchantId, merchant.id))
+      .orderBy(desc(apiKeys.createdAt));
 
     // Don't expose secret keys in list
-    const safeKeys = apiKeys.map(key => ({
+    const safeKeys = keysResult.map(key => ({
       ...key,
-      secretKey: '••••••••••••••••',
-      webhookSecret: '••••••••••••••••'
+      key: '••••••••••••••••',
+      secret: '••••••••••••••••'
     }));
 
     res.json(safeKeys);
@@ -34,33 +35,23 @@ router.get('/', merchantAuth, async (req, res) => {
 // Create API key
 router.post('/', merchantAuth, async (req, res) => {
   try {
-    const { name } = req.body;
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const { name, permissions } = req.body;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    // Check if merchant already has an API key
-    const existingKey = await prisma.apiKey.findFirst({
-      where: { merchantId: merchant.id }
-    });
+    const key = `pk_${crypto.randomBytes(32).toString('hex')}`;
+    const secret = `sk_${crypto.randomBytes(32).toString('hex')}`;
 
-    if (existingKey) {
-      return res.status(400).json({ error: 'Merchant already has an API key' });
-    }
-
-    const publicKey = `pk_${crypto.randomBytes(32).toString('hex')}`;
-    const secretKey = `sk_${crypto.randomBytes(32).toString('hex')}`;
-    const webhookSecret = `whsec_${crypto.randomBytes(32).toString('hex')}`;
-
-    const apiKey = await prisma.apiKey.create({
-      data: {
-        merchantId: merchant.id,
-        name,
-        publicKey,
-        secretKey,
-        webhookSecret
-      }
-    });
+    const apiKeyResult = await db.insert(apiKeys).values({
+      merchantId: merchant.id,
+      key,
+      secret,
+      name: name || 'Default API Key',
+      permissions: permissions || JSON.stringify(['read', 'write']),
+      isActive: true
+    }).returning();
+    
+    const apiKey = apiKeyResult[0];
 
     res.json(apiKey);
   } catch (error) {
@@ -72,33 +63,29 @@ router.post('/', merchantAuth, async (req, res) => {
 // Regenerate API key
 router.post('/:id/regenerate', merchantAuth, async (req, res) => {
   try {
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const apiKey = await prisma.apiKey.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const apiKeyResult = await db.select()
+      .from(apiKeys)
+      .where(eq(apiKeys.id, req.params.id))
+      .limit(1);
+    
+    const apiKey = apiKeyResult[0];
 
-    if (!apiKey) {
+    if (!apiKey || apiKey.merchantId !== merchant.id) {
       return res.status(404).json({ error: 'API key not found' });
     }
 
-    const newPublicKey = `pk_${crypto.randomBytes(32).toString('hex')}`;
-    const newSecretKey = `sk_${crypto.randomBytes(32).toString('hex')}`;
-    const newWebhookSecret = `whsec_${crypto.randomBytes(32).toString('hex')}`;
+    const newKey = `pk_${crypto.randomBytes(32).toString('hex')}`;
+    const newSecret = `sk_${crypto.randomBytes(32).toString('hex')}`;
 
-    const updatedKey = await prisma.apiKey.update({
-      where: { id: req.params.id },
-      data: {
-        publicKey: newPublicKey,
-        secretKey: newSecretKey,
-        webhookSecret: newWebhookSecret
-      }
-    });
+    const updatedKeyResult = await db.update(apiKeys)
+      .set({ key: newKey, secret: newSecret })
+      .where(eq(apiKeys.id, req.params.id))
+      .returning();
+    
+    const updatedKey = updatedKeyResult[0];
 
     res.json(updatedKey);
   } catch (error) {
@@ -110,25 +97,23 @@ router.post('/:id/regenerate', merchantAuth, async (req, res) => {
 // Revoke API key
 router.post('/:id/revoke', merchantAuth, async (req, res) => {
   try {
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const apiKey = await prisma.apiKey.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const apiKeyResult = await db.select()
+      .from(apiKeys)
+      .where(eq(apiKeys.id, req.params.id))
+      .limit(1);
+    
+    const apiKey = apiKeyResult[0];
 
-    if (!apiKey) {
+    if (!apiKey || apiKey.merchantId !== merchant.id) {
       return res.status(404).json({ error: 'API key not found' });
     }
 
-    await prisma.apiKey.update({
-      where: { id: req.params.id },
-      data: { isActive: false }
-    });
+    await db.update(apiKeys)
+      .set({ isActive: false })
+      .where(eq(apiKeys.id, req.params.id));
 
     res.json({ message: 'API key revoked successfully' });
   } catch (error) {
@@ -140,24 +125,21 @@ router.post('/:id/revoke', merchantAuth, async (req, res) => {
 // Delete API key
 router.delete('/:id', merchantAuth, async (req, res) => {
   try {
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const apiKey = await prisma.apiKey.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const apiKeyResult = await db.select()
+      .from(apiKeys)
+      .where(eq(apiKeys.id, req.params.id))
+      .limit(1);
+    
+    const apiKey = apiKeyResult[0];
 
-    if (!apiKey) {
+    if (!apiKey || apiKey.merchantId !== merchant.id) {
       return res.status(404).json({ error: 'API key not found' });
     }
 
-    await prisma.apiKey.delete({
-      where: { id: req.params.id }
-    });
+    await db.delete(apiKeys).where(eq(apiKeys.id, req.params.id));
 
     res.json({ message: 'API key deleted successfully' });
   } catch (error) {

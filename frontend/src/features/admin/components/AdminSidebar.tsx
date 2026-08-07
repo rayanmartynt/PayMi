@@ -3,6 +3,7 @@ import { usePathname } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
+import Image from 'next/image'
 import { 
   LayoutDashboard, 
   Users, 
@@ -34,7 +35,7 @@ const navigation = [
 export function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { sidebarOpen, logout } = useStore()
+  const { darkMode, sidebarOpen, logout } = useStore()
 
   const handleLogout = () => {
     logout()
@@ -49,7 +50,13 @@ export function AdminSidebar() {
       <div className="flex h-full flex-col">
         <div className="flex h-16 items-center border-b px-6">
           <div className="flex items-center space-x-2">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-red-600 to-orange-600" />
+            <Image
+              src={darkMode ? "/Dark mode logo.png" : "/Light mode logo.png"}
+              alt="PayMi Logo"
+              width={60}
+              height={20}
+              priority
+            />
             <span className="text-xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">
               PayMi Admin
             </span>

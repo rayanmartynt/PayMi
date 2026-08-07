@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const QRCode = require('qrcode');
-const prisma = require('../lib/prisma');
+const prisma = require('../db/index');
 const { auth, merchantAuth } = require('../middleware/auth');
 
 /**

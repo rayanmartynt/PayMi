@@ -2,8 +2,9 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { fileTypeFromBuffer } = require('file-type');
 const { customerAuth } = require('../middleware/auth');
-const prisma = require('../lib/prisma');
+const prisma = require('../db/index');
 
 const router = express.Router();
 
@@ -29,11 +30,11 @@ const fileFilter = (req, file, cb) => {
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype) || file.mimetype === 'application/pdf';
 
-  if (extname && mimetype) {
-    return cb(null, true);
-  } else {
-    cb(new Error('Only JPEG, PNG, and PDF files are allowed'));
+  if (!extname || !mimetype) {
+    return cb(new Error('Only JPEG, PNG, and PDF files are allowed'));
   }
+
+  cb(null, true);
 };
 
 const upload = multer({
@@ -71,6 +72,17 @@ router.post('/documents', customerAuth, upload.single('document'), async (req, r
 
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Validate file content
+    const filePath = path.join(__dirname, '../../uploads', req.file.filename);
+    const buffer = fs.readFileSync(filePath);
+    const fileType = await fileTypeFromBuffer(buffer);
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+    
+    if (!fileType || !allowedMimeTypes.includes(fileType.mime)) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ error: 'Invalid file type. Only JPEG, PNG, and PDF files are allowed' });
     }
 
     const documentUrl = `/uploads/${req.file.filename}`;
