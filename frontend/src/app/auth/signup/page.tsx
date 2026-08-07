@@ -138,7 +138,7 @@ export default function SignupPage() {
       }
 
       console.log('Registration successful, redirecting to verify-email')
-      router.push('/auth/verify-email')
+      router.push(`/auth/verify-email?email=${encodeURIComponent(formData.email)}`)
     } catch (err: any) {
       console.error('Registration error:', err)
       setError(err.message || 'Registration failed. Please try again.')

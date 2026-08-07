@@ -117,6 +117,7 @@ router.post('/register',
 
     // Send verification email
     try {
+      console.log('Verification code for', email, ':', verificationCode);
       await sendVerificationEmail(email, verificationCode);
     } catch (emailError) {
       console.error('Failed to send verification email:', emailError);
@@ -160,10 +161,13 @@ router.post('/verify-email',
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('Validation errors:', errors.array());
+      console.log('Request body:', req.body);
       return res.status(400).json({ errors: errors.array() });
     }
 
     const { email, code } = req.body;
+    console.log('Verifying email:', email, 'with code:', code);
 
     const userResult = await db.select().from(users).where(eq(users.email, email)).limit(1);
     const user = userResult[0];
@@ -270,6 +274,7 @@ router.post('/resend-verification',
       .where(eq(users.id, user.id));
 
     // Send verification email
+    console.log('Verification code for', email, ':', verificationCode);
     await sendVerificationEmail(email, verificationCode);
 
     res.json({ message: 'Verification code sent successfully' });

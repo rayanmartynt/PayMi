@@ -1,4 +1,4 @@
-const { pgTable, uuid, varchar, text, boolean, timestamp, decimal, integer, index } = require('drizzle-orm/pg-core');
+const { pgTable, uuid, varchar, text, boolean, timestamp, decimal, integer, index, uniqueIndex } = require('drizzle-orm/pg-core');
 
 const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -248,7 +248,7 @@ const loyaltyAccounts = pgTable('loyalty_accounts', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
-  userIdIdx: index('loyalty_accounts_user_id_idx').on(table.userId).unique(),
+  userIdIdx: uniqueIndex('loyalty_accounts_user_id_idx').on(table.userId),
 }));
 
 const loyaltyRewards = pgTable('loyalty_rewards', {
@@ -289,7 +289,7 @@ const promoCodes = pgTable('promo_codes', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
   merchantIdIdx: index('promo_codes_merchant_id_idx').on(table.merchantId),
-  codeIdx: index('promo_codes_code_idx').on(table.code).unique(),
+  codeIdx: uniqueIndex('promo_codes_code_idx').on(table.code),
   activeIdx: index('promo_codes_active_idx').on(table.active),
 }));
 
@@ -305,7 +305,7 @@ const referrals = pgTable('referrals', {
 }, (table) => ({
   referrerIdIdx: index('referrals_referrer_id_idx').on(table.referrerId),
   referredUserIdIdx: index('referrals_referred_user_id_idx').on(table.referredUserId),
-  referralCodeIdx: index('referrals_referral_code_idx').on(table.referralCode).unique(),
+  referralCodeIdx: uniqueIndex('referrals_referral_code_idx').on(table.referralCode),
 }));
 
 const supportTickets = pgTable('support_tickets', {

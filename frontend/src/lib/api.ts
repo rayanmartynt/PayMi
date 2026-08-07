@@ -100,10 +100,10 @@ class ApiClient {
     this.clearToken();
   }
 
-  async verifyEmail(code: string) {
+  async verifyEmail(code: string, email?: string) {
     return this.request('/api/auth/verify-email', {
       method: 'POST',
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, email }),
     });
   }
 

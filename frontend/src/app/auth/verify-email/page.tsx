@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -12,6 +12,7 @@ import { api } from '@/lib/api'
 
 export default function VerifyEmailPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [code, setCode] = useState(['', '', '', '', '', ''])
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
@@ -19,6 +20,13 @@ export default function VerifyEmailPage() {
   const [success, setSuccess] = useState(false)
   const [showEmailInput, setShowEmailInput] = useState(false)
   const [resendSuccess, setResendSuccess] = useState('')
+
+  useEffect(() => {
+    const emailParam = searchParams.get('email')
+    if (emailParam) {
+      setEmail(decodeURIComponent(emailParam))
+    }
+  }, [searchParams])
 
   const handleCodeChange = (index: number, value: string) => {
     if (value.length > 1) {
@@ -61,7 +69,7 @@ export default function VerifyEmailPage() {
     setLoading(true)
 
     try {
-      await api.verifyEmail(verificationCode)
+      await api.verifyEmail(verificationCode, email)
       setSuccess(true)
       setTimeout(() => {
         router.push('/auth/login')
