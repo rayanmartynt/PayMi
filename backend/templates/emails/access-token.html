@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Access Token</title>
+</head>
+<body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: linear-gradient(135deg, #44b75e 0%, #3762ae 100%);">
+  <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; padding: 50px; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+    <div style="text-align: center; margin-bottom: 30px;">
+      <div style="width: 60px; height: 60px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+        <span style="color: white; font-size: 24px;">🔐</span>
+      </div>
+      <h2 style="color: #333; margin-top: 0; font-size: 28px; font-weight: 700;">Your {{keyName}}</h2>
+    </div>
+    <p style="color: #555; font-size: 16px; line-height: 1.6;">Hi {{name}},</p>
+    <p style="color: #555; font-size: 16px; line-height: 1.6;">Your {{keyName}} has been generated successfully.</p>
+    <p style="color: #555; font-size: 16px; line-height: 1.6;"><strong>Access Token:</strong></p>
+    <div style="background: linear-gradient(135deg, #44b75e 0%, #3762ae 100%); padding: 25px; text-align: center; font-size: 14px; font-family: 'Courier New', monospace; word-break: break-all; margin: 25px 0; border-radius: 12px; color: white; box-shadow: 0 8px 20px rgba(79, 172, 254, 0.4); letter-spacing: 1px;">
+      {{accessToken}}
+    </div>
+    <p style="color: #dc3545; font-size: 16px; font-weight: 600; margin-top: 30px;"><strong>Important Security Notice:</strong></p>
+    <ul style="color: #555; line-height: 1.8; padding-left: 20px;">
+      <li style="margin-bottom: 10px;">Keep this token secure and do not share it with anyone.</li>
+      <li style="margin-bottom: 10px;">This token provides full access to your account.</li>
+      <li style="margin-bottom: 10px;">If you suspect this token has been compromised, revoke it immediately from your dashboard.</li>
+      <li style="margin-bottom: 10px;">Store this token in a secure location (e.g., password manager).</li>
+    </ul>
+    <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #ffc107;">
+      <p style="color: #856404; font-size: 14px; margin: 0;">If you did not request this token, please contact support immediately.</p>
+    </div>
+    <hr style="border: none; border-top: 1px solid #eee; margin: 40px 0;">
+    <p style="color: #999; font-size: 12px; margin: 0;">Best regards,<br><strong>The PayMi Team</strong></p>
+    <div style="margin-top: 20px; text-align: center;">
+      <p style="color: #ccc; font-size: 11px; margin: 0;">© 2026 PayMi. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>

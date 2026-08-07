@@ -1,6 +1,8 @@
 const express = require('express');
 const { auth, merchantAuth } = require('../middleware/auth');
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc, and } = require('drizzle-orm');
+const { merchants, webhooks } = require('../db/schema');
 
 const router = express.Router();
 
@@ -8,20 +10,23 @@ const router = express.Router();
 router.post('/', merchantAuth, async (req, res) => {
   try {
     const { url, events, description, secret } = req.body;
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const webhook = await prisma.webhook.create({
-      data: {
-        merchantId: merchant.id,
-        url,
-        events: JSON.stringify(events),
-        description,
-        secret,
-        status: 'active'
-      }
-    });
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const webhookResult = await db.insert(webhooks).values({
+      merchantId: merchant.id,
+      url,
+      events: JSON.stringify(events),
+      description,
+      secret,
+      status: 'active'
+    }).returning();
+    
+    const webhook = webhookResult[0];
 
     res.json(webhook);
   } catch (error) {
@@ -33,17 +38,20 @@ router.post('/', merchantAuth, async (req, res) => {
 // Get webhooks for merchant
 router.get('/', merchantAuth, async (req, res) => {
   try {
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const webhooks = await prisma.webhook.findMany({
-      where: { merchantId: merchant.id },
-      orderBy: { createdAt: 'desc' }
-    });
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const webhooksResult = await db.select()
+      .from(webhooks)
+      .where(eq(webhooks.merchantId, merchant.id))
+      .orderBy(desc(webhooks.createdAt));
 
     // Parse events from JSON string
-    const webhooksWithParsedEvents = webhooks.map(webhook => ({
+    const webhooksWithParsedEvents = webhooksResult.map(webhook => ({
       ...webhook,
       events: JSON.parse(webhook.events)
     }));
@@ -59,31 +67,36 @@ router.get('/', merchantAuth, async (req, res) => {
 router.put('/:id', merchantAuth, async (req, res) => {
   try {
     const { url, events, description, secret, status } = req.body;
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const webhook = await prisma.webhook.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const webhookResult = await db.select()
+      .from(webhooks)
+      .where(and(eq(webhooks.id, req.params.id), eq(webhooks.merchantId, merchant.id)))
+      .limit(1);
+    
+    const webhook = webhookResult[0];
 
     if (!webhook) {
       return res.status(404).json({ error: 'Webhook not found' });
     }
 
-    const updatedWebhook = await prisma.webhook.update({
-      where: { id: req.params.id },
-      data: {
+    const updatedWebhookResult = await db.update(webhooks)
+      .set({
         url: url || webhook.url,
         events: events ? JSON.stringify(events) : webhook.events,
         description: description || webhook.description,
         secret: secret || webhook.secret,
         status: status || webhook.status
-      }
-    });
+      })
+      .where(eq(webhooks.id, req.params.id))
+      .returning();
+    
+    const updatedWebhook = updatedWebhookResult[0];
 
     res.json(updatedWebhook);
   } catch (error) {
@@ -95,24 +108,25 @@ router.put('/:id', merchantAuth, async (req, res) => {
 // Delete webhook
 router.delete('/:id', merchantAuth, async (req, res) => {
   try {
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const webhook = await prisma.webhook.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const webhookResult = await db.select()
+      .from(webhooks)
+      .where(and(eq(webhooks.id, req.params.id), eq(webhooks.merchantId, merchant.id)))
+      .limit(1);
+    
+    const webhook = webhookResult[0];
 
     if (!webhook) {
       return res.status(404).json({ error: 'Webhook not found' });
     }
 
-    await prisma.webhook.delete({
-      where: { id: req.params.id }
-    });
+    await db.delete(webhooks).where(eq(webhooks.id, req.params.id));
 
     res.json({ message: 'Webhook deleted successfully' });
   } catch (error) {
@@ -124,16 +138,19 @@ router.delete('/:id', merchantAuth, async (req, res) => {
 // Test webhook
 router.post('/:id/test', merchantAuth, async (req, res) => {
   try {
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const webhook = await prisma.webhook.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const webhookResult = await db.select()
+      .from(webhooks)
+      .where(and(eq(webhooks.id, req.params.id), eq(webhooks.merchantId, merchant.id)))
+      .limit(1);
+    
+    const webhook = webhookResult[0];
 
     if (!webhook) {
       return res.status(404).json({ error: 'Webhook not found' });

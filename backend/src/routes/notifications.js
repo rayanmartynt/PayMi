@@ -1,6 +1,8 @@
 const express = require('express');
 const { auth } = require('../middleware/auth');
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc, and } = require('drizzle-orm');
+const { notifications } = require('../db/schema');
 
 const router = express.Router();
 
@@ -8,25 +10,24 @@ const router = express.Router();
 router.get('/', auth, async (req, res) => {
   try {
     const { page = 1, limit = 20, unreadOnly } = req.query;
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
 
-    const where = {
-      userId: req.user.id,
-      ...(unreadOnly === 'true' ? { read: false } : {})
-    };
+    let whereCondition = eq(notifications.userId, req.user.id);
+    if (unreadOnly === 'true') {
+      whereCondition = and(eq(notifications.userId, req.user.id), eq(notifications.read, false));
+    }
 
-    const [notifications, total] = await Promise.all([
-      prisma.notification.findMany({
-        where,
-        skip,
-        take: parseInt(limit),
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.notification.count({ where })
-    ]);
+    const notificationsResult = await db.select()
+      .from(notifications)
+      .where(whereCondition)
+      .orderBy(desc(notifications.createdAt))
+      .limit(parseInt(limit))
+      .offset(offset);
+
+    const total = notificationsResult.length;
 
     res.json({
-      notifications,
+      notifications: notificationsResult,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -43,10 +44,12 @@ router.get('/', auth, async (req, res) => {
 // Mark notification as read
 router.post('/:id/read', auth, async (req, res) => {
   try {
-    const notification = await prisma.notification.update({
-      where: { id: req.params.id },
-      data: { read: true }
-    });
+    const updatedNotificationResult = await db.update(notifications)
+      .set({ read: true })
+      .where(eq(notifications.id, req.params.id))
+      .returning();
+    
+    const notification = updatedNotificationResult[0];
 
     res.json(notification);
   } catch (error) {
@@ -58,13 +61,9 @@ router.post('/:id/read', auth, async (req, res) => {
 // Mark all notifications as read
 router.post('/read-all', auth, async (req, res) => {
   try {
-    await prisma.notification.updateMany({
-      where: {
-        userId: req.user.id,
-        read: false
-      },
-      data: { read: true }
-    });
+    await db.update(notifications)
+      .set({ read: true })
+      .where(and(eq(notifications.userId, req.user.id), eq(notifications.read, false)));
 
     res.json({ message: 'All notifications marked as read' });
   } catch (error) {
@@ -76,9 +75,7 @@ router.post('/read-all', auth, async (req, res) => {
 // Delete notification
 router.delete('/:id', auth, async (req, res) => {
   try {
-    await prisma.notification.delete({
-      where: { id: req.params.id }
-    });
+    await db.delete(notifications).where(eq(notifications.id, req.params.id));
 
     res.json({ message: 'Notification deleted' });
   } catch (error) {

@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { merchantAuth, auth, customerAuth } = require('../middleware/auth');
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc } = require('drizzle-orm');
+const { merchants, customers, transactions, paymentLinks } = require('../db/schema');
 const PaymentGateway = require('../services/payment');
 const StripePayment = require('../services/stripePayment');
 
@@ -12,20 +14,23 @@ const TWO_FA_AMOUNT_THRESHOLD = 1000000; // 1,000,000 SLE - adjust based on loca
 router.post('/links', merchantAuth, async (req, res) => {
   try {
     const { title, description, amount, currency, expiresAt } = req.body;
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const paymentLink = await prisma.paymentLink.create({
-      data: {
-        merchantId: merchant.id,
-        title,
-        description,
-        amount: parseFloat(amount),
-        currency: currency || 'SLE',
-        expiresAt: expiresAt ? new Date(expiresAt) : null
-      }
-    });
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const paymentLinkResult = await db.insert(paymentLinks).values({
+      merchantId: merchant.id,
+      title,
+      description,
+      amount: amount.toString(),
+      currency: currency || 'SLE',
+      expiresAt: expiresAt ? new Date(expiresAt) : null
+    }).returning();
+    
+    const paymentLink = paymentLinkResult[0];
 
     res.json(paymentLink);
   } catch (error) {
@@ -37,16 +42,19 @@ router.post('/links', merchantAuth, async (req, res) => {
 // Get payment links for merchant
 router.get('/links', merchantAuth, async (req, res) => {
   try {
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const paymentLinks = await prisma.paymentLink.findMany({
-      where: { merchantId: merchant.id },
-      orderBy: { createdAt: 'desc' }
-    });
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
 
-    res.json(paymentLinks);
+    const paymentLinksResult = await db.select()
+      .from(paymentLinks)
+      .where(eq(paymentLinks.merchantId, merchant.id))
+      .orderBy(desc(paymentLinks.createdAt));
+
+    res.json(paymentLinksResult);
   } catch (error) {
     console.error('Get payment links error:', error);
     res.status(500).json({ error: 'Failed to get payment links' });
@@ -60,9 +68,8 @@ router.post('/mobile-money', auth, async (req, res) => {
     const reference = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Get merchant
-    const merchant = await prisma.merchant.findUnique({
-      where: { id: merchantId }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.id, merchantId)).limit(1);
+    const merchant = merchantResult[0];
 
     if (!merchant) {
       return res.status(404).json({ error: 'Merchant not found' });
@@ -93,19 +100,23 @@ router.post('/mobile-money', auth, async (req, res) => {
     const paymentResult = await gateway.initiatePayment(phoneNumber, amount, 'SLE', reference);
 
     if (paymentResult.success) {
+      // Get customer if exists
+      const customerResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
+      const customer = customerResult[0];
+
       // Create transaction record
-      const transaction = await prisma.transaction.create({
-        data: {
-          merchantId: merchant.id,
-          customerId: req.user.customer?.id || null,
-          amount,
-          currency: 'SLE',
-          paymentMethod,
-          reference,
-          description,
-          status: 'PENDING'
-        }
-      });
+      const transactionResult = await db.insert(transactions).values({
+        merchantId: merchant.id,
+        customerId: customer?.id || null,
+        amount: amount.toString(),
+        currency: 'SLE',
+        paymentMethod,
+        reference,
+        description,
+        status: 'PENDING'
+      }).returning();
+      
+      const transaction = transactionResult[0];
 
       // Notify merchant about new payment
       if (global.io) {
@@ -178,9 +189,8 @@ router.post('/stripe/intent', auth, async (req, res) => {
 router.post('/stripe/confirm', auth, async (req, res) => {
   try {
     const { paymentIntentId, merchantId, amount, description } = req.body;
-    const merchant = await prisma.merchant.findUnique({
-      where: { id: merchantId }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.id, merchantId)).limit(1);
+    const merchant = merchantResult[0];
 
     if (!merchant) {
       return res.status(404).json({ error: 'Merchant not found' });
@@ -188,18 +198,22 @@ router.post('/stripe/confirm', auth, async (req, res) => {
 
     const reference = `STRIPE-${paymentIntentId}`;
 
-    const transaction = await prisma.transaction.create({
-      data: {
-        merchantId: merchant.id,
-        customerId: req.user.customer?.id || null,
-        amount,
-        currency: 'USD',
-        paymentMethod: 'STRIPE',
-        reference,
-        description,
-        status: 'SUCCESSFUL'
-      }
-    });
+    // Get customer if exists
+    const customerResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
+    const customer = customerResult[0];
+
+    const transactionResult = await db.insert(transactions).values({
+      merchantId: merchant.id,
+      customerId: customer?.id || null,
+      amount: amount.toString(),
+      currency: 'USD',
+      paymentMethod: 'STRIPE',
+      reference,
+      description,
+      status: 'SUCCESSFUL'
+    }).returning();
+    
+    const transaction = transactionResult[0];
 
     // Notify merchant
     if (global.io) {

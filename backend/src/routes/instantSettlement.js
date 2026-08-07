@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc, and } = require('drizzle-orm');
+const { merchants, settlements } = require('../db/schema');
 const { auth, merchantAuth } = require('../middleware/auth');
 
 /**
@@ -17,7 +19,12 @@ const calculateInstantFee = (amount) => {
 router.post('/', merchantAuth, async (req, res) => {
   try {
     const { amount, currency = 'SLE', mobileMoneyProvider, mobileNumber } = req.body;
-    const merchant = req.merchant;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
 
     if (!amount || !mobileMoneyProvider || !mobileNumber) {
       return res.status(400).json({ error: 'Amount, provider, and mobile number are required' });
@@ -27,30 +34,29 @@ router.post('/', merchantAuth, async (req, res) => {
     const netAmount = parseFloat(amount) - instantFee;
 
     // Create settlement with instant flag
-    const settlement = await prisma.settlement.create({
-      data: {
-        merchantId: merchant.id,
-        amount: netAmount,
-        currency,
-        mobileMoneyProvider,
-        mobileNumber,
-        instant: true,
-        instantFee,
-        status: 'PENDING'
-      }
-    });
+    const settlementResult = await db.insert(settlements).values({
+      merchantId: merchant.id,
+      amount: netAmount.toString(),
+      currency,
+      mobileMoneyProvider,
+      mobileNumber,
+      instant: true,
+      instantFee: instantFee.toString(),
+      status: 'PENDING'
+    }).returning();
+    
+    const settlement = settlementResult[0];
 
     // In a real implementation, this would trigger the actual mobile money transfer
     // For now, we'll simulate instant settlement
     setTimeout(async () => {
       try {
-        await prisma.settlement.update({
-          where: { id: settlement.id },
-          data: {
+        await db.update(settlements)
+          .set({
             status: 'COMPLETED',
             settledAt: new Date()
-          }
-        });
+          })
+          .where(eq(settlements.id, settlement.id));
 
         if (global.io) {
           global.io.to(merchant.id).emit('settlement', {
@@ -113,20 +119,26 @@ router.get('/estimate', merchantAuth, async (req, res) => {
  */
 router.get('/history', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const { status } = req.query;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const where = { merchantId: merchant.id, instant: true };
-    if (status) {
-      where.status = status;
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
     }
 
-    const settlements = await prisma.settlement.findMany({
-      where,
-      orderBy: { createdAt: 'desc' }
-    });
+    const { status } = req.query;
 
-    res.json({ settlements });
+    let whereCondition = and(eq(settlements.merchantId, merchant.id), eq(settlements.instant, true));
+    if (status) {
+      whereCondition = and(eq(settlements.merchantId, merchant.id), eq(settlements.instant, true), eq(settlements.status, status));
+    }
+
+    const settlementsResult = await db.select()
+      .from(settlements)
+      .where(whereCondition)
+      .orderBy(desc(settlements.createdAt));
+
+    res.json({ settlements: settlementsResult });
   } catch (error) {
     console.error('Get settlement history error:', error);
     res.status(500).json({ error: 'Failed to get settlement history' });

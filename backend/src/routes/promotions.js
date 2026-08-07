@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc, and } = require('drizzle-orm');
+const { merchants, promoCodes } = require('../db/schema');
 const { auth, merchantAuth } = require('../middleware/auth');
 
 /**
@@ -22,25 +24,30 @@ const generatePromoCode = () => {
 router.post('/', merchantAuth, async (req, res) => {
   try {
     const { code, discountType, discountValue, minPurchase, maxUses, expiresAt, description } = req.body;
-    const merchant = req.merchant;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
 
     if (!discountType || !discountValue) {
       return res.status(400).json({ error: 'Discount type and value are required' });
     }
 
-    const promoCode = await prisma.promoCode.create({
-      data: {
-        merchantId: merchant.id,
-        code: code || generatePromoCode(),
-        discountType: discountType.toUpperCase(),
-        discountValue: parseFloat(discountValue),
-        minPurchase: minPurchase ? parseFloat(minPurchase) : 0,
-        maxUses: maxUses || null,
-        expiresAt: expiresAt ? new Date(expiresAt) : null,
-        description: description || null,
-        active: true
-      }
-    });
+    const promoCodeResult = await db.insert(promoCodes).values({
+      merchantId: merchant.id,
+      code: code || generatePromoCode(),
+      discountType: discountType.toUpperCase(),
+      discountValue: parseFloat(discountValue).toString(),
+      minPurchase: minPurchase ? parseFloat(minPurchase).toString() : '0',
+      maxUses: maxUses || null,
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      description: description || null,
+      active: true
+    }).returning();
+    
+    const promoCode = promoCodeResult[0];
 
     res.status(201).json({
       message: 'Promotional code created successfully',
@@ -58,20 +65,26 @@ router.post('/', merchantAuth, async (req, res) => {
  */
 router.get('/', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const { active } = req.query;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const where = { merchantId: merchant.id };
-    if (active !== undefined) {
-      where.active = active === 'true';
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
     }
 
-    const promoCodes = await prisma.promoCode.findMany({
-      where,
-      orderBy: { createdAt: 'desc' }
-    });
+    const { active } = req.query;
 
-    res.json({ promoCodes });
+    let whereCondition = eq(promoCodes.merchantId, merchant.id);
+    if (active !== undefined) {
+      whereCondition = and(eq(promoCodes.merchantId, merchant.id), eq(promoCodes.active, active === 'true'));
+    }
+
+    const promoCodesResult = await db.select()
+      .from(promoCodes)
+      .where(whereCondition)
+      .orderBy(desc(promoCodes.createdAt));
+
+    res.json({ promoCodes: promoCodesResult });
   } catch (error) {
     console.error('Get promo codes error:', error);
     res.status(500).json({ error: 'Failed to get promotional codes' });
@@ -84,9 +97,12 @@ router.get('/', merchantAuth, async (req, res) => {
  */
 router.get('/validate/:code', async (req, res) => {
   try {
-    const promoCode = await prisma.promoCode.findUnique({
-      where: { code: req.params.code }
-    });
+    const promoCodeResult = await db.select()
+      .from(promoCodes)
+      .where(eq(promoCodes.code, req.params.code))
+      .limit(1);
+    
+    const promoCode = promoCodeResult[0];
 
     if (!promoCode) {
       return res.status(404).json({ error: 'Invalid promotional code' });
@@ -128,9 +144,12 @@ router.post('/apply', auth, async (req, res) => {
       return res.status(400).json({ error: 'Code and amount are required' });
     }
 
-    const promoCode = await prisma.promoCode.findUnique({
-      where: { code }
-    });
+    const promoCodeResult = await db.select()
+      .from(promoCodes)
+      .where(eq(promoCodes.code, code))
+      .limit(1);
+    
+    const promoCode = promoCodeResult[0];
 
     if (!promoCode || !promoCode.active) {
       return res.status(404).json({ error: 'Invalid or inactive promotional code' });
@@ -140,7 +159,7 @@ router.post('/apply', auth, async (req, res) => {
       return res.status(400).json({ error: 'Promotional code has expired' });
     }
 
-    if (parseFloat(amount) < promoCode.minPurchase) {
+    if (parseFloat(amount) < parseFloat(promoCode.minPurchase)) {
       return res.status(400).json({ 
         error: `Minimum purchase amount is ${promoCode.minPurchase}` 
       });
@@ -148,9 +167,9 @@ router.post('/apply', auth, async (req, res) => {
 
     let discountAmount;
     if (promoCode.discountType === 'PERCENTAGE') {
-      discountAmount = parseFloat(amount) * (promoCode.discountValue / 100);
+      discountAmount = parseFloat(amount) * (parseFloat(promoCode.discountValue) / 100);
     } else {
-      discountAmount = promoCode.discountValue;
+      discountAmount = parseFloat(promoCode.discountValue);
     }
 
     const finalAmount = Math.max(0, parseFloat(amount) - discountAmount);
@@ -177,29 +196,40 @@ router.post('/apply', auth, async (req, res) => {
  */
 router.put('/:id', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
     const { discountType, discountValue, minPurchase, maxUses, expiresAt, active, description } = req.body;
 
-    const promoCode = await prisma.promoCode.findFirst({
-      where: { id: req.params.id, merchantId: merchant.id }
-    });
+    const promoCodeResult = await db.select()
+      .from(promoCodes)
+      .where(and(eq(promoCodes.id, req.params.id), eq(promoCodes.merchantId, merchant.id)))
+      .limit(1);
+    
+    const promoCode = promoCodeResult[0];
 
     if (!promoCode) {
       return res.status(404).json({ error: 'Promotional code not found' });
     }
 
-    const updated = await prisma.promoCode.update({
-      where: { id: req.params.id },
-      data: {
+    const updatedResult = await db.update(promoCodes)
+      .set({
         discountType: discountType || promoCode.discountType,
-        discountValue: discountValue !== undefined ? parseFloat(discountValue) : promoCode.discountValue,
-        minPurchase: minPurchase !== undefined ? parseFloat(minPurchase) : promoCode.minPurchase,
+        discountValue: discountValue !== undefined ? parseFloat(discountValue).toString() : promoCode.discountValue,
+        minPurchase: minPurchase !== undefined ? parseFloat(minPurchase).toString() : promoCode.minPurchase,
         maxUses: maxUses !== undefined ? maxUses : promoCode.maxUses,
         expiresAt: expiresAt ? new Date(expiresAt) : promoCode.expiresAt,
         active: active !== undefined ? active : promoCode.active,
         description: description !== undefined ? description : promoCode.description
-      }
-    });
+      })
+      .where(eq(promoCodes.id, req.params.id))
+      .returning();
+    
+    const updated = updatedResult[0];
 
     res.json({
       message: 'Promotional code updated successfully',
@@ -217,19 +247,25 @@ router.put('/:id', merchantAuth, async (req, res) => {
  */
 router.delete('/:id', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const promoCode = await prisma.promoCode.findFirst({
-      where: { id: req.params.id, merchantId: merchant.id }
-    });
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const promoCodeResult = await db.select()
+      .from(promoCodes)
+      .where(and(eq(promoCodes.id, req.params.id), eq(promoCodes.merchantId, merchant.id)))
+      .limit(1);
+    
+    const promoCode = promoCodeResult[0];
 
     if (!promoCode) {
       return res.status(404).json({ error: 'Promotional code not found' });
     }
 
-    await prisma.promoCode.delete({
-      where: { id: req.params.id }
-    });
+    await db.delete(promoCodes).where(eq(promoCodes.id, req.params.id));
 
     res.json({ message: 'Promotional code deleted successfully' });
   } catch (error) {

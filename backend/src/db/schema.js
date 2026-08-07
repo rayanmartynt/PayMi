@@ -1,4 +1,4 @@
-const { pgTable, uuid, varchar, text, boolean, timestamp, decimal, integer, index } = require('drizzle-orm/pg-core');
+const { pgTable, uuid, varchar, text, boolean, timestamp, decimal, integer, index, uniqueIndex } = require('drizzle-orm/pg-core');
 
 const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -8,6 +8,9 @@ const users = pgTable('users', {
   role: varchar('role', { length: 50 }).notNull(),
   twoFactorEnabled: boolean('two_factor_enabled').default(false).notNull(),
   twoFactorSecret: varchar('two_factor_secret', { length: 255 }),
+  emailVerified: boolean('email_verified').default(false).notNull(),
+  verificationCode: varchar('verification_code', { length: 10 }),
+  verificationCodeExpires: timestamp('verification_code_expires'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({ emailIdx: index('users_email_idx').on(table.email) }));
@@ -63,6 +66,279 @@ const transactions = pgTable('transactions', {
   customerIdIdx: index('transactions_customer_id_idx').on(table.customerId),
   statusIdx: index('transactions_status_idx').on(table.status),
   createdAtIdx: index('transactions_created_at_idx').on(table.createdAt),
+}));
+
+const paymentLinks = pgTable('payment_links', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  merchantId: uuid('merchant_id').notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  amount: decimal('amount', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 10 }).default('SLE').notNull(),
+  expiresAt: timestamp('expires_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  merchantIdIdx: index('payment_links_merchant_id_idx').on(table.merchantId),
+}));
+
+const refunds = pgTable('refunds', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  transactionId: uuid('transaction_id').notNull(),
+  amount: decimal('amount', { precision: 15, scale: 2 }).notNull(),
+  reason: text('reason').notNull(),
+  status: varchar('status', { length: 50 }).default('PENDING').notNull(),
+  processedAt: timestamp('processed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  transactionIdIdx: index('refunds_transaction_id_idx').on(table.transactionId),
+  statusIdx: index('refunds_status_idx').on(table.status),
+}));
+
+const bulkPayments = pgTable('bulk_payments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  merchantId: uuid('merchant_id').notNull(),
+  totalAmount: decimal('total_amount', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 10 }).default('SLE').notNull(),
+  paymentCount: integer('payment_count').notNull(),
+  status: varchar('status', { length: 50 }).default('PENDING').notNull(),
+  description: text('description'),
+  payments: text('payments').notNull(),
+  successCount: integer('success_count').default(0),
+  failureCount: integer('failure_count').default(0),
+  processedAt: timestamp('processed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  merchantIdIdx: index('bulk_payments_merchant_id_idx').on(table.merchantId),
+  statusIdx: index('bulk_payments_status_idx').on(table.status),
+}));
+
+const paymentMethods = pgTable('payment_methods', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  customerId: uuid('customer_id').notNull(),
+  type: varchar('type', { length: 50 }).notNull(),
+  phoneNumber: varchar('phone_number', { length: 20 }).notNull(),
+  isDefault: boolean('is_default').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  customerIdIdx: index('payment_methods_customer_id_idx').on(table.customerId),
+}));
+
+const invoices = pgTable('invoices', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  merchantId: uuid('merchant_id').notNull(),
+  customerId: uuid('customer_id'),
+  invoiceNumber: varchar('invoice_number', { length: 50 }).notNull(),
+  amount: decimal('amount', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 10 }).default('SLE').notNull(),
+  items: text('items').notNull(),
+  notes: text('notes'),
+  status: varchar('status', { length: 50 }).default('DRAFT').notNull(),
+  dueDate: timestamp('due_date'),
+  paidAt: timestamp('paid_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  merchantIdIdx: index('invoices_merchant_id_idx').on(table.merchantId),
+  customerIdIdx: index('invoices_customer_id_idx').on(table.customerId),
+  statusIdx: index('invoices_status_idx').on(table.status),
+  invoiceNumberIdx: index('invoices_invoice_number_idx').on(table.invoiceNumber),
+}));
+
+const qrCodes = pgTable('qr_codes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  merchantId: uuid('merchant_id').notNull(),
+  amount: decimal('amount', { precision: 15, scale: 2 }),
+  currency: varchar('currency', { length: 10 }).default('SLE').notNull(),
+  qrCodeData: text('qr_code_data').notNull(),
+  status: varchar('status', { length: 50 }).default('ACTIVE').notNull(),
+  expiresAt: timestamp('expires_at'),
+  scanCount: integer('scan_count').default(0).notNull(),
+  metadata: text('metadata'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  merchantIdIdx: index('qr_codes_merchant_id_idx').on(table.merchantId),
+  statusIdx: index('qr_codes_status_idx').on(table.status),
+}));
+
+const subscriptions = pgTable('subscriptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  merchantId: uuid('merchant_id').notNull(),
+  customerId: uuid('customer_id').notNull(),
+  amount: decimal('amount', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 10 }).default('SLE').notNull(),
+  interval: varchar('interval', { length: 50 }).notNull(),
+  status: varchar('status', { length: 50 }).default('ACTIVE').notNull(),
+  nextBilling: timestamp('next_billing').notNull(),
+  lastPayment: timestamp('last_payment'),
+  metadata: text('metadata'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  merchantIdIdx: index('subscriptions_merchant_id_idx').on(table.merchantId),
+  customerIdIdx: index('subscriptions_customer_id_idx').on(table.customerId),
+  statusIdx: index('subscriptions_status_idx').on(table.status),
+  nextBillingIdx: index('subscriptions_next_billing_idx').on(table.nextBilling),
+}));
+
+const splitPayments = pgTable('split_payments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  merchantId: uuid('merchant_id').notNull(),
+  totalAmount: decimal('total_amount', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 10 }).default('SLE').notNull(),
+  reference: varchar('reference', { length: 255 }).notNull(),
+  status: varchar('status', { length: 50 }).default('PENDING').notNull(),
+  expiresAt: timestamp('expires_at'),
+  metadata: text('metadata'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  merchantIdIdx: index('split_payments_merchant_id_idx').on(table.merchantId),
+  statusIdx: index('split_payments_status_idx').on(table.status),
+  referenceIdx: index('split_payments_reference_idx').on(table.reference),
+}));
+
+const splitPaymentParts = pgTable('split_payment_parts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  splitPaymentId: uuid('split_payment_id').notNull(),
+  recipientId: uuid('recipient_id').notNull(),
+  recipientType: varchar('recipient_type', { length: 50 }).default('MERCHANT').notNull(),
+  amount: decimal('amount', { precision: 15, scale: 2 }).notNull(),
+  status: varchar('status', { length: 50 }).default('PENDING').notNull(),
+  transactionId: uuid('transaction_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  splitPaymentIdIdx: index('split_payment_parts_split_payment_id_idx').on(table.splitPaymentId),
+  recipientIdIdx: index('split_payment_parts_recipient_id_idx').on(table.recipientId),
+  statusIdx: index('split_payment_parts_status_idx').on(table.status),
+}));
+
+const escrow = pgTable('escrow', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  merchantId: uuid('merchant_id').notNull(),
+  customerId: uuid('customer_id').notNull(),
+  amount: decimal('amount', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 10 }).default('SLE').notNull(),
+  status: varchar('status', { length: 50 }).default('PENDING').notNull(),
+  releaseCondition: text('release_condition'),
+  reference: varchar('reference', { length: 255 }).notNull(),
+  fundedAt: timestamp('funded_at'),
+  releasedAt: timestamp('released_at'),
+  refundedAt: timestamp('refunded_at'),
+  metadata: text('metadata'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  merchantIdIdx: index('escrow_merchant_id_idx').on(table.merchantId),
+  customerIdIdx: index('escrow_customer_id_idx').on(table.customerId),
+  statusIdx: index('escrow_status_idx').on(table.status),
+  referenceIdx: index('escrow_reference_idx').on(table.reference),
+}));
+
+const loyaltyAccounts = pgTable('loyalty_accounts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull(),
+  points: integer('points').default(0).notNull(),
+  tier: varchar('tier', { length: 50 }).default('BRONZE').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  userIdIdx: uniqueIndex('loyalty_accounts_user_id_idx').on(table.userId),
+}));
+
+const loyaltyRewards = pgTable('loyalty_rewards', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  pointsRequired: integer('points_required').notNull(),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+const loyaltyRedemptions = pgTable('loyalty_redemptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  loyaltyAccountId: uuid('loyalty_account_id').notNull(),
+  rewardId: uuid('reward_id').notNull(),
+  pointsUsed: integer('points_used').notNull(),
+  status: varchar('status', { length: 50 }).default('COMPLETED').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  loyaltyAccountIdIdx: index('loyalty_redemptions_loyalty_account_id_idx').on(table.loyaltyAccountId),
+  rewardIdIdx: index('loyalty_redemptions_reward_id_idx').on(table.rewardId),
+}));
+
+const promoCodes = pgTable('promo_codes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  merchantId: uuid('merchant_id').notNull(),
+  code: varchar('code', { length: 50 }).notNull(),
+  discountType: varchar('discount_type', { length: 50 }).notNull(),
+  discountValue: decimal('discount_value', { precision: 15, scale: 2 }).notNull(),
+  minPurchase: decimal('min_purchase', { precision: 15, scale: 2 }).default('0').notNull(),
+  maxUses: integer('max_uses'),
+  usesCount: integer('uses_count').default(0).notNull(),
+  active: boolean('active').default(true).notNull(),
+  expiresAt: timestamp('expires_at'),
+  description: text('description'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  merchantIdIdx: index('promo_codes_merchant_id_idx').on(table.merchantId),
+  codeIdx: uniqueIndex('promo_codes_code_idx').on(table.code),
+  activeIdx: index('promo_codes_active_idx').on(table.active),
+}));
+
+const referrals = pgTable('referrals', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  referrerId: uuid('referrer_id').notNull(),
+  referredUserId: uuid('referred_user_id'),
+  referralCode: varchar('referral_code', { length: 50 }).notNull(),
+  commissionRate: integer('commission_rate').default(5).notNull(),
+  referredAt: timestamp('referred_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  referrerIdIdx: index('referrals_referrer_id_idx').on(table.referrerId),
+  referredUserIdIdx: index('referrals_referred_user_id_idx').on(table.referredUserId),
+  referralCodeIdx: uniqueIndex('referrals_referral_code_idx').on(table.referralCode),
+}));
+
+const supportTickets = pgTable('support_tickets', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  customerId: uuid('customer_id').notNull(),
+  subject: varchar('subject', { length: 255 }).notNull(),
+  message: text('message').notNull(),
+  priority: varchar('priority', { length: 50 }).default('MEDIUM').notNull(),
+  status: varchar('status', { length: 50 }).default('OPEN').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  customerIdIdx: index('support_tickets_customer_id_idx').on(table.customerId),
+  statusIdx: index('support_tickets_status_idx').on(table.status),
+}));
+
+const settlements = pgTable('settlements', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  merchantId: uuid('merchant_id').notNull(),
+  amount: decimal('amount', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 10 }).default('SLE').notNull(),
+  mobileMoneyProvider: varchar('mobile_money_provider', { length: 50 }).notNull(),
+  mobileNumber: varchar('mobile_number', { length: 50 }).notNull(),
+  instant: boolean('instant').default(false).notNull(),
+  instantFee: decimal('instant_fee', { precision: 15, scale: 2 }),
+  status: varchar('status', { length: 50 }).default('PENDING').notNull(),
+  settledAt: timestamp('settled_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  merchantIdIdx: index('settlements_merchant_id_idx').on(table.merchantId),
+  statusIdx: index('settlements_status_idx').on(table.status),
+  instantIdx: index('settlements_instant_idx').on(table.instant),
 }));
 
 const customerTransfers = pgTable('customer_transfers', {
@@ -273,6 +549,23 @@ module.exports = {
   merchants,
   customers,
   transactions,
+  paymentLinks,
+  refunds,
+  bulkPayments,
+  paymentMethods,
+  invoices,
+  qrCodes,
+  subscriptions,
+  splitPayments,
+  splitPaymentParts,
+  escrow,
+  loyaltyAccounts,
+  loyaltyRewards,
+  loyaltyRedemptions,
+  promoCodes,
+  referrals,
+  supportTickets,
+  settlements,
   customerTransfers,
   customerWithdrawals,
   withdrawals,

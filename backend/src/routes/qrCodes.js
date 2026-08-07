@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const QRCode = require('qrcode');
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc, and } = require('drizzle-orm');
+const { merchants, qrCodes } = require('../db/schema');
 const { auth, merchantAuth } = require('../middleware/auth');
 
 /**
@@ -11,7 +13,12 @@ const { auth, merchantAuth } = require('../middleware/auth');
 router.post('/', merchantAuth, async (req, res) => {
   try {
     const { amount, currency = 'SLE', expiresAt, metadata } = req.body;
-    const merchant = req.merchant;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
 
     // Generate QR code data
     const qrData = JSON.stringify({
@@ -25,16 +32,16 @@ router.post('/', merchantAuth, async (req, res) => {
     const qrCodeDataUrl = await QRCode.toDataURL(qrData);
 
     // Save QR code to database
-    const qrCode = await prisma.qRCode.create({
-      data: {
-        merchantId: merchant.id,
-        amount: amount ? parseFloat(amount) : null,
-        currency,
-        qrCodeData: qrData,
-        expiresAt: expiresAt ? new Date(expiresAt) : null,
-        metadata: metadata ? JSON.stringify(metadata) : null
-      }
-    });
+    const qrCodeResult = await db.insert(qrCodes).values({
+      merchantId: merchant.id,
+      amount: amount ? parseFloat(amount).toString() : null,
+      currency,
+      qrCodeData: qrData,
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      metadata: metadata ? JSON.stringify(metadata) : null
+    }).returning();
+    
+    const qrCode = qrCodeResult[0];
 
     res.status(201).json({
       message: 'QR code generated successfully',
@@ -55,20 +62,26 @@ router.post('/', merchantAuth, async (req, res) => {
  */
 router.get('/', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const { status } = req.query;
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const where = { merchantId: merchant.id };
-    if (status) {
-      where.status = status;
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
     }
 
-    const qrCodes = await prisma.qRCode.findMany({
-      where,
-      orderBy: { createdAt: 'desc' }
-    });
+    const { status } = req.query;
 
-    res.json({ qrCodes });
+    let whereCondition = eq(qrCodes.merchantId, merchant.id);
+    if (status) {
+      whereCondition = and(eq(qrCodes.merchantId, merchant.id), eq(qrCodes.status, status));
+    }
+
+    const qrCodesResult = await db.select()
+      .from(qrCodes)
+      .where(whereCondition)
+      .orderBy(desc(qrCodes.createdAt));
+
+    res.json({ qrCodes: qrCodesResult });
   } catch (error) {
     console.error('Get QR codes error:', error);
     res.status(500).json({ error: 'Failed to get QR codes' });
@@ -81,13 +94,19 @@ router.get('/', merchantAuth, async (req, res) => {
  */
 router.get('/:id', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const qrCode = await prisma.qRCode.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const qrCodeResult = await db.select()
+      .from(qrCodes)
+      .where(and(eq(qrCodes.id, req.params.id), eq(qrCodes.merchantId, merchant.id)))
+      .limit(1);
+    
+    const qrCode = qrCodeResult[0];
 
     if (!qrCode) {
       return res.status(404).json({ error: 'QR code not found' });
@@ -95,10 +114,9 @@ router.get('/:id', merchantAuth, async (req, res) => {
 
     // Check if expired
     if (qrCode.expiresAt && new Date(qrCode.expiresAt) < new Date()) {
-      await prisma.qRCode.update({
-        where: { id: req.params.id },
-        data: { status: 'EXPIRED' }
-      });
+      await db.update(qrCodes)
+        .set({ status: 'EXPIRED' })
+        .where(eq(qrCodes.id, req.params.id));
       qrCode.status = 'EXPIRED';
     }
 
@@ -115,9 +133,12 @@ router.get('/:id', merchantAuth, async (req, res) => {
  */
 router.post('/:id/scan', auth, async (req, res) => {
   try {
-    const qrCode = await prisma.qRCode.findUnique({
-      where: { id: req.params.id }
-    });
+    const qrCodeResult = await db.select()
+      .from(qrCodes)
+      .where(eq(qrCodes.id, req.params.id))
+      .limit(1);
+    
+    const qrCode = qrCodeResult[0];
 
     if (!qrCode) {
       return res.status(404).json({ error: 'QR code not found' });
@@ -132,10 +153,9 @@ router.post('/:id/scan', auth, async (req, res) => {
     }
 
     // Increment scan count
-    await prisma.qRCode.update({
-      where: { id: req.params.id },
-      data: { scanCount: { increment: 1 } }
-    });
+    await db.update(qrCodes)
+      .set({ scanCount: qrCode.scanCount + 1 })
+      .where(eq(qrCodes.id, req.params.id));
 
     res.json({
       message: 'QR code scanned successfully',
@@ -155,13 +175,19 @@ router.post('/:id/scan', auth, async (req, res) => {
  */
 router.post('/:id/disable', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const qrCode = await prisma.qRCode.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const qrCodeResult = await db.select()
+      .from(qrCodes)
+      .where(and(eq(qrCodes.id, req.params.id), eq(qrCodes.merchantId, merchant.id)))
+      .limit(1);
+    
+    const qrCode = qrCodeResult[0];
 
     if (!qrCode) {
       return res.status(404).json({ error: 'QR code not found' });
@@ -171,10 +197,12 @@ router.post('/:id/disable', merchantAuth, async (req, res) => {
       return res.status(400).json({ error: 'QR code is already disabled' });
     }
 
-    const updated = await prisma.qRCode.update({
-      where: { id: req.params.id },
-      data: { status: 'DISABLED' }
-    });
+    const updatedResult = await db.update(qrCodes)
+      .set({ status: 'DISABLED' })
+      .where(eq(qrCodes.id, req.params.id))
+      .returning();
+    
+    const updated = updatedResult[0];
 
     res.json({
       message: 'QR code disabled successfully',
@@ -192,13 +220,19 @@ router.post('/:id/disable', merchantAuth, async (req, res) => {
  */
 router.post('/:id/enable', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const qrCode = await prisma.qRCode.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const qrCodeResult = await db.select()
+      .from(qrCodes)
+      .where(and(eq(qrCodes.id, req.params.id), eq(qrCodes.merchantId, merchant.id)))
+      .limit(1);
+    
+    const qrCode = qrCodeResult[0];
 
     if (!qrCode) {
       return res.status(404).json({ error: 'QR code not found' });
@@ -212,10 +246,12 @@ router.post('/:id/enable', merchantAuth, async (req, res) => {
       return res.status(400).json({ error: 'Cannot enable expired QR code' });
     }
 
-    const updated = await prisma.qRCode.update({
-      where: { id: req.params.id },
-      data: { status: 'ACTIVE' }
-    });
+    const updatedResult = await db.update(qrCodes)
+      .set({ status: 'ACTIVE' })
+      .where(eq(qrCodes.id, req.params.id))
+      .returning();
+    
+    const updated = updatedResult[0];
 
     res.json({
       message: 'QR code enabled successfully',
@@ -233,21 +269,25 @@ router.post('/:id/enable', merchantAuth, async (req, res) => {
  */
 router.delete('/:id', merchantAuth, async (req, res) => {
   try {
-    const merchant = req.merchant;
-    const qrCode = await prisma.qRCode.findFirst({
-      where: {
-        id: req.params.id,
-        merchantId: merchant.id
-      }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
+
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const qrCodeResult = await db.select()
+      .from(qrCodes)
+      .where(and(eq(qrCodes.id, req.params.id), eq(qrCodes.merchantId, merchant.id)))
+      .limit(1);
+    
+    const qrCode = qrCodeResult[0];
 
     if (!qrCode) {
       return res.status(404).json({ error: 'QR code not found' });
     }
 
-    await prisma.qRCode.delete({
-      where: { id: req.params.id }
-    });
+    await db.delete(qrCodes).where(eq(qrCodes.id, req.params.id));
 
     res.json({ message: 'QR code deleted successfully' });
   } catch (error) {

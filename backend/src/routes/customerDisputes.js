@@ -1,6 +1,8 @@
 const express = require('express');
 const { customerAuth } = require('../middleware/auth');
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc, and } = require('drizzle-orm');
+const { customers, disputes } = require('../db/schema');
 
 const router = express.Router();
 
@@ -8,29 +10,35 @@ const router = express.Router();
 router.get('/', customerAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20, status } = req.query;
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
     
-    const customer = await prisma.customer.findUnique({
-      where: { userId: req.user.id }
-    });
+    const customerResult = await db.select()
+      .from(customers)
+      .where(eq(customers.userId, req.user.id))
+      .limit(1);
+    
+    const customer = customerResult[0];
 
-    const where = {
-      customerId: customer.id,
-      ...(status ? { status } : {})
-    };
+    let whereCondition = eq(disputes.customerId, customer.id);
+    if (status) {
+      whereCondition = and(eq(disputes.customerId, customer.id), eq(disputes.status, status));
+    }
 
-    const [disputes, total] = await Promise.all([
-      prisma.dispute.findMany({
-        where,
-        skip,
-        take: parseInt(limit),
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.dispute.count({ where })
-    ]);
+    const disputesResult = await db.select()
+      .from(disputes)
+      .where(whereCondition)
+      .orderBy(desc(disputes.createdAt))
+      .limit(parseInt(limit))
+      .offset(offset);
+
+    const totalResult = await db.select()
+      .from(disputes)
+      .where(whereCondition);
+    
+    const total = totalResult.length;
 
     res.json({
-      disputes,
+      disputes: disputesResult,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -48,20 +56,23 @@ router.get('/', customerAuth, async (req, res) => {
 router.post('/', customerAuth, async (req, res) => {
   try {
     const { transactionId, transferId, title, description } = req.body;
-    const customer = await prisma.customer.findUnique({
-      where: { userId: req.user.id }
-    });
+    const customerResult = await db.select()
+      .from(customers)
+      .where(eq(customers.userId, req.user.id))
+      .limit(1);
+    
+    const customer = customerResult[0];
 
-    const dispute = await prisma.dispute.create({
-      data: {
-        customerId: customer.id,
-        transactionId,
-        transferId,
-        title,
-        description,
-        status: 'OPEN'
-      }
-    });
+    const disputeResult = await db.insert(disputes).values({
+      customerId: customer.id,
+      transactionId,
+      transferId,
+      title,
+      description,
+      status: 'OPEN'
+    }).returning();
+    
+    const dispute = disputeResult[0];
 
     res.json(dispute);
   } catch (error) {

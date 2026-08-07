@@ -4,7 +4,9 @@ const path = require('path');
 const fs = require('fs');
 const { fileTypeFromBuffer } = require('file-type');
 const { customerAuth } = require('../middleware/auth');
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc } = require('drizzle-orm');
+const { customers, customerKycDocuments } = require('../db/schema');
 
 const router = express.Router();
 
@@ -46,16 +48,19 @@ const upload = multer({
 // Get customer KYC documents
 router.get('/documents', customerAuth, async (req, res) => {
   try {
-    const customer = await prisma.customer.findUnique({
-      where: { userId: req.user.id }
-    });
+    const customerResult = await db.select()
+      .from(customers)
+      .where(eq(customers.userId, req.user.id))
+      .limit(1);
+    
+    const customer = customerResult[0];
 
-    const documents = await prisma.customerKYCDocument.findMany({
-      where: { customerId: customer.id },
-      orderBy: { submittedAt: 'desc' }
-    });
+    const documentsResult = await db.select()
+      .from(customerKycDocuments)
+      .where(eq(customerKycDocuments.customerId, customer.id))
+      .orderBy(desc(customerKycDocuments.submittedAt));
 
-    res.json(documents);
+    res.json(documentsResult);
   } catch (error) {
     console.error('Get customer KYC documents error:', error);
     res.status(500).json({ error: 'Failed to get KYC documents' });
@@ -66,9 +71,12 @@ router.get('/documents', customerAuth, async (req, res) => {
 router.post('/documents', customerAuth, upload.single('document'), async (req, res) => {
   try {
     const { documentType } = req.body;
-    const customer = await prisma.customer.findUnique({
-      where: { userId: req.user.id }
-    });
+    const customerResult = await db.select()
+      .from(customers)
+      .where(eq(customers.userId, req.user.id))
+      .limit(1);
+    
+    const customer = customerResult[0];
 
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -87,15 +95,15 @@ router.post('/documents', customerAuth, upload.single('document'), async (req, r
 
     const documentUrl = `/uploads/${req.file.filename}`;
 
-    const kycDocument = await prisma.customerKYCDocument.create({
-      data: {
-        customerId: customer.id,
-        documentType,
-        documentUrl,
-        status: 'PENDING',
-        submittedAt: new Date()
-      }
-    });
+    const kycDocumentResult = await db.insert(customerKycDocuments).values({
+      customerId: customer.id,
+      documentType,
+      documentUrl,
+      status: 'PENDING',
+      submittedAt: new Date()
+    }).returning();
+    
+    const kycDocument = kycDocumentResult[0];
 
     res.json(kycDocument);
   } catch (error) {

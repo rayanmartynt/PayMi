@@ -1,25 +1,27 @@
 const express = require('express');
 const { auth, merchantAuth, customerAuth } = require('../middleware/auth');
-const prisma = require('../db/index');
+const db = require('../db/index');
+const { eq, desc } = require('drizzle-orm');
+const { merchants, customers, transactions, refunds } = require('../db/schema');
 
 const router = express.Router();
 
 // Get all transactions for a merchant
 router.get('/merchant', merchantAuth, async (req, res) => {
   try {
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const transactions = await prisma.transaction.findMany({
-      where: { merchantId: merchant.id },
-      include: {
-        customer: true
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
 
-    res.json(transactions);
+    const transactionsResult = await db.select()
+      .from(transactions)
+      .where(eq(transactions.merchantId, merchant.id))
+      .orderBy(desc(transactions.createdAt));
+
+    res.json(transactionsResult);
   } catch (error) {
     console.error('Get merchant transactions error:', error);
     res.status(500).json({ error: 'Failed to get transactions' });
@@ -29,23 +31,19 @@ router.get('/merchant', merchantAuth, async (req, res) => {
 // Get all transactions for a customer
 router.get('/customer', customerAuth, async (req, res) => {
   try {
-    const customer = await prisma.customer.findUnique({
-      where: { userId: req.user.id }
-    });
+    const customerResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
+    const customer = customerResult[0];
 
-    const transactions = await prisma.transaction.findMany({
-      where: { customerId: customer.id },
-      include: {
-        merchant: {
-          include: {
-            user: true
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
 
-    res.json(transactions);
+    const transactionsResult = await db.select()
+      .from(transactions)
+      .where(eq(transactions.customerId, customer.id))
+      .orderBy(desc(transactions.createdAt));
+
+    res.json(transactionsResult);
   } catch (error) {
     console.error('Get customer transactions error:', error);
     res.status(500).json({ error: 'Failed to get transactions' });
@@ -55,33 +53,28 @@ router.get('/customer', customerAuth, async (req, res) => {
 // Get single transaction by ID
 router.get('/:id', auth, async (req, res) => {
   try {
-    const transaction = await prisma.transaction.findUnique({
-      where: { id: req.params.id },
-      include: {
-        merchant: {
-          include: {
-            user: true
-          }
-        },
-        customer: {
-          include: {
-            user: true
-          }
-        }
-      }
-    });
+    const transactionResult = await db.select().from(transactions).where(eq(transactions.id, req.params.id)).limit(1);
+    const transaction = transactionResult[0];
 
     if (!transaction) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
 
     // Check if user has access to this transaction
-    if (req.user.role === 'MERCHANT' && transaction.merchantId !== req.user.merchant.id) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (req.user.role === 'MERCHANT') {
+      const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+      const merchant = merchantResult[0];
+      if (transaction.merchantId !== merchant.id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
     }
 
-    if (req.user.role === 'CUSTOMER' && transaction.customerId !== req.user.customer.id) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (req.user.role === 'CUSTOMER') {
+      const customerResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
+      const customer = customerResult[0];
+      if (transaction.customerId !== customer.id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
     }
 
     res.json(transaction);
@@ -95,13 +88,15 @@ router.get('/:id', auth, async (req, res) => {
 router.post('/:id/refund', merchantAuth, async (req, res) => {
   try {
     const { reason } = req.body;
-    const merchant = await prisma.merchant.findUnique({
-      where: { userId: req.user.id }
-    });
+    const merchantResult = await db.select().from(merchants).where(eq(merchants.userId, req.user.id)).limit(1);
+    const merchant = merchantResult[0];
 
-    const transaction = await prisma.transaction.findUnique({
-      where: { id: req.params.id }
-    });
+    if (!merchant) {
+      return res.status(404).json({ error: 'Merchant not found' });
+    }
+
+    const transactionResult = await db.select().from(transactions).where(eq(transactions.id, req.params.id)).limit(1);
+    const transaction = transactionResult[0];
 
     if (!transaction) {
       return res.status(404).json({ error: 'Transaction not found' });
@@ -115,14 +110,14 @@ router.post('/:id/refund', merchantAuth, async (req, res) => {
       return res.status(400).json({ error: 'Can only refund successful transactions' });
     }
 
-    const refund = await prisma.refund.create({
-      data: {
-        transactionId: transaction.id,
-        amount: transaction.amount,
-        reason,
-        status: 'PENDING'
-      }
-    });
+    const refundResult = await db.insert(refunds).values({
+      transactionId: transaction.id,
+      amount: transaction.amount,
+      reason,
+      status: 'PENDING'
+    }).returning();
+    
+    const refund = refundResult[0];
 
     // Notify customer about refund
     if (global.io && transaction.customerId) {
