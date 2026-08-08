@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Lock, Mail, ArrowRight, AlertCircle, Loader2 } from 'lucide-react'
+import { Lock, Mail, Phone, ArrowRight, AlertCircle, Loader2, Eye, EyeOff, } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
@@ -12,11 +12,12 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/features/auth/AuthContext'
 
 export default function AuthLoginPage() {
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const { login } = useAuth()
+  const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -25,7 +26,7 @@ export default function AuthLoginPage() {
     setLoading(true)
 
     try {
-      const response = await login(email, password)
+      const response = await login(identifier, password)
       // Redirect based on user role
       if (response.user.role === 'ADMIN') {
         router.push('/admin')
@@ -37,6 +38,14 @@ export default function AuthLoginPage() {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Login failed'
       setError(message)
+      
+      // Check if phone verification is required
+      if (message.includes('Phone not verified')) {
+        // Extract phone number from error if available
+        const phoneMatch = message.match(/phone number: ([+\d]+)/i)
+        const phone = phoneMatch ? phoneMatch[1] : identifier
+        router.push(`/auth/verify-phone?phone=${encodeURIComponent(phone)}`)
+      }
     } finally {
       setLoading(false)
     }
@@ -81,18 +90,18 @@ export default function AuthLoginPage() {
                 )}
 
                 <div className="space-y-2">
-                  <label htmlFor="email" className="text-sm font-medium">
-                    Email
+                  <label htmlFor="identifier" className="text-sm font-medium">
+                    Email or Phone Number
                   </label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      id="email"
-                      type="email"
-                      placeholder="username@gmail.com"
+                      id="identifier"
+                      type="text"
+                      placeholder="username@gmail.com or phone number"
                       className="pl-10"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
                       required
                       disabled={loading}
                     />
@@ -111,8 +120,8 @@ export default function AuthLoginPage() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
+                      type={showPassword ? "text" : "password"}
                       id="password"
-                      type="password"
                       placeholder="••••••••"
                       className="pl-10"
                       value={password}
@@ -120,6 +129,13 @@ export default function AuthLoginPage() {
                       required
                       disabled={loading}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
                 </div>
 

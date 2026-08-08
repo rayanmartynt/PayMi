@@ -9,7 +9,7 @@ import {
   CheckCircle, 
   XCircle, 
   Clock, 
-  CreditCard, 
+  Wallet, 
   Users, 
   AlertTriangle,
   Trash2,

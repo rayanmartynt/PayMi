@@ -2,18 +2,40 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 import { toast } from 'sonner';
 
 class ApiClient {
+  deleteWebhook(id: string) {
+    throw new Error('Method not implemented.');
+  }
+  toggleWebhookStatus(id: string) {
+    throw new Error('Method not implemented.');
+  }
+  createWebhook(arg0: { url: string; events: string[]; }) {
+    throw new Error('Method not implemented.');
+  }
+  getWebhooks() {
+    throw new Error('Method not implemented.');
+  }
   private baseUrl: string;
   private token: string | null = null;
+  private refreshToken: string | null = null;
+  private isRefreshing: boolean = false;
+  private refreshSubscribers: Array<(token: string) => void> = [];
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
     if (typeof window !== 'undefined') {
       this.token = localStorage.getItem('token');
+      this.refreshToken = localStorage.getItem('refreshToken');
     }
   }
 
-  setToken(token: string) {
+  setToken(token: string, refreshToken?: string) {
     this.token = token;
+    if (refreshToken) {
+      this.refreshToken = refreshToken;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('refreshToken', refreshToken);
+      }
+    }
     if (typeof window !== 'undefined') {
       localStorage.setItem('token', token);
     }
@@ -21,9 +43,40 @@ class ApiClient {
 
   clearToken() {
     this.token = null;
+    this.refreshToken = null;
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
     }
+  }
+
+  private async refreshTokenRequest(): Promise<string> {
+    if (!this.refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    const response = await fetch(`${this.baseUrl}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: this.refreshToken }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to refresh token');
+    }
+
+    const data = await response.json();
+    this.setToken(data.token, data.refreshToken);
+    return data.token;
+  }
+
+  private subscribeTokenRefresh(callback: (token: string) => void) {
+    this.refreshSubscribers.push(callback);
+  }
+
+  private onTokenRefreshed(token: string) {
+    this.refreshSubscribers.forEach(callback => callback(token));
+    this.refreshSubscribers = [];
   }
 
   private async request<T>(
@@ -48,6 +101,42 @@ class ApiClient {
       });
 
       if (!response.ok) {
+        if (response.status === 401 && this.refreshToken && !this.isRefreshing) {
+          this.isRefreshing = true;
+          try {
+            const newToken = await this.refreshTokenRequest();
+            this.isRefreshing = false;
+            this.onTokenRefreshed(newToken);
+            
+            // Retry the original request with new token
+            headers['Authorization'] = `Bearer ${newToken}`;
+            const retryResponse = await fetch(url, {
+              ...options,
+              headers,
+            });
+            
+            if (!retryResponse.ok) {
+              const error = await retryResponse.json().catch(() => ({ error: 'An error occurred' }));
+              const errorMessage = error.error || error.message || 'An error occurred';
+              if (showToast) {
+                toast.error(errorMessage);
+              }
+              throw new Error(errorMessage);
+            }
+            
+            const data = await retryResponse.json();
+            if (showToast && options.method && options.method !== 'GET') {
+              toast.success('Operation successful');
+            }
+            return data;
+          } catch (refreshError) {
+            this.isRefreshing = false;
+            this.clearToken();
+            window.location.href = '/login';
+            throw new Error('Session expired. Please log in again.');
+          }
+        }
+
         const error = await response.json().catch(() => ({ error: 'An error occurred' }));
         const errorMessage = error.error || error.message || 'An error occurred';
         console.error('API Error:', error, 'Status:', response.status);
@@ -72,26 +161,40 @@ class ApiClient {
   }
 
   // Auth endpoints
-  async register(data: {
-    name: string;
-    email: string;
-    password: string;
-    phoneNumber: string;
-    businessName?: string;
-    businessType?: string;
-  }) {
+  async register(data: any) {
     return this.request('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
+  async initiateRegistration(data: any) {
+    return this.request('/api/auth/initiate-registration', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async completeRegistrationPhone(tempToken: string, code: string) {
+    return this.request<{ token: string; refreshToken: string; user: { role: string } }>('/api/auth/complete-registration-phone', {
+      method: 'POST',
+      body: JSON.stringify({ tempToken, code }),
+    });
+  }
+
+  async completeRegistrationEmail(tempToken: string, code: string) {
+    return this.request('/api/auth/complete-registration-email', {
+      method: 'POST',
+      body: JSON.stringify({ tempToken, code }),
+    });
+  }
+
   async login(email: string, password: string) {
-    const response = await this.request<{ token: string; user: any }>('/api/auth/login', {
+    const response = await this.request<{ token: string; refreshToken: string; user: any }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    this.setToken(response.token);
+    this.setToken(response.token, response.refreshToken);
     return response;
   }
 
@@ -107,10 +210,335 @@ class ApiClient {
     });
   }
 
-  async resendVerificationCode(email: string) {
+  async resendVerificationCode(email?: string) {
     return this.request('/api/auth/resend-verification', {
       method: 'POST',
-      body: JSON.stringify({ email }),
+      body: JSON.stringify(email ? { email } : {}),
+    });
+  }
+
+  // Dashboard verification endpoints
+  async sendPhoneVerification(phoneNumber?: string) {
+    return this.request('/api/auth/send-phone-verification', {
+      method: 'POST',
+      body: JSON.stringify(phoneNumber ? { phoneNumber } : {}),
+    });
+  }
+
+  async verifyPhoneDashboard(code: string) {
+    return this.request('/api/auth/verify-phone', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  }
+
+  async verifyEmailDashboard(code: string) {
+    return this.request('/api/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  }
+
+  // Contacts API
+  async syncContacts(contacts: Array<{ name: string; phoneNumber: string }>) {
+    return this.request('/api/contacts/sync', {
+      method: 'POST',
+      body: JSON.stringify({ contacts }),
+    });
+  }
+
+  async getContacts(onlyPayMiUsers?: boolean) {
+    return this.request(`/api/contacts${onlyPayMiUsers ? '?onlyPayMiUsers=true' : ''}`);
+  }
+
+  async deleteContact(contactId: string) {
+    return this.request(`/api/contacts/${contactId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Friendships API
+  async sendFriendRequest(contactId: string) {
+    return this.request('/api/friendships/request', {
+      method: 'POST',
+      body: JSON.stringify({ contactId }),
+    });
+  }
+
+  async acceptFriendRequest(friendshipId: string) {
+    return this.request(`/api/friendships/accept/${friendshipId}`, {
+      method: 'POST',
+    });
+  }
+
+  async rejectFriendRequest(friendshipId: string) {
+    return this.request(`/api/friendships/reject/${friendshipId}`, {
+      method: 'POST',
+    });
+  }
+
+  async getFriendRequests() {
+    return this.request('/api/friendships/requests');
+  }
+
+  async getFriends() {
+    return this.request('/api/friendships');
+  }
+
+  async blockFriend(friendshipId: string) {
+    return this.request(`/api/friendships/block/${friendshipId}`, {
+      method: 'POST',
+    });
+  }
+
+  // Chats API
+  async getChatWithFriend(friendId: string) {
+    return this.request(`/api/chats/with/${friendId}`);
+  }
+
+  async getChats() {
+    return this.request('/api/chats');
+  }
+
+  async sendMessage(chatId: string, content: string) {
+    return this.request(`/api/chats/${chatId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+  }
+
+  async getMessages(chatId: string, limit?: number, offset?: number) {
+    return this.request(`/api/chats/${chatId}/messages?limit=${limit || 50}&offset=${offset || 0}`);
+  }
+
+  async markMessagesAsRead(chatId: string) {
+    return this.request(`/api/chats/${chatId}/read`, {
+      method: 'POST',
+    });
+  }
+
+  // P2P Transfers API
+  async sendToFriend(friendId: string, amount: number, description?: string) {
+    return this.request('/api/customers/transfers/friend', {
+      method: 'POST',
+      body: JSON.stringify({ friendId, amount, description }),
+    });
+  }
+
+  // Merchant Payments API
+  async getMerchantByMerchantId(merchantId: string) {
+    return this.request(`/api/merchant-payments/merchant/${merchantId}`);
+  }
+
+  async payMerchantByMerchantId(merchantId: string, amount: number, paymentMethod: string, description?: string) {
+    return this.request('/api/merchant-payments/pay-by-id', {
+      method: 'POST',
+      body: JSON.stringify({ merchantId, amount, paymentMethod, description }),
+    });
+  }
+
+  // Merchant API Keys
+  async getApiKeys() {
+    return this.request('/api/merchants/api-keys');
+  }
+
+  async createApiKey(name: string, permissions?: string[], expiresIn?: number) {
+    return this.request('/api/merchants/api-keys', {
+      method: 'POST',
+      body: JSON.stringify({ name, permissions, expiresIn }),
+    });
+  }
+
+  async getApiKey(id: string) {
+    return this.request(`/api/merchants/api-keys/${id}`);
+  }
+
+  async updateApiKey(id: string, name?: string, permissions?: string[], isActive?: boolean) {
+    return this.request(`/api/merchants/api-keys/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, permissions, isActive }),
+    });
+  }
+
+  async deleteApiKey(id: string) {
+    return this.request(`/api/merchants/api-keys/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async regenerateApiKeySecret(id: string) {
+    return this.request(`/api/merchants/api-keys/${id}/regenerate`, {
+      method: 'POST',
+    });
+  }
+
+  // Merchant Webhooks
+  async getMerchantWebhooks() {
+    return this.request('/api/merchants/webhooks');
+  }
+
+  async createMerchantWebhook(url: string, events?: string[]) {
+    return this.request('/api/merchants/webhooks', {
+      method: 'POST',
+      body: JSON.stringify({ url, events }),
+    });
+  }
+
+  async getMerchantWebhook(id: string) {
+    return this.request(`/api/merchants/webhooks/${id}`);
+  }
+
+  async updateMerchantWebhook(id: string, url?: string, events?: string[], isActive?: boolean) {
+    return this.request(`/api/merchants/webhooks/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ url, events, isActive }),
+    });
+  }
+
+  async deleteMerchantWebhook(id: string) {
+    return this.request(`/api/merchants/webhooks/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async regenerateMerchantWebhookSecret(id: string) {
+    return this.request(`/api/merchants/webhooks/${id}/regenerate`, {
+      method: 'POST',
+    });
+  }
+
+  async testMerchantWebhook(id: string) {
+    return this.request(`/api/merchants/webhooks/${id}/test`, {
+      method: 'POST',
+    });
+  }
+
+  // Money Requests
+  async createMoneyRequest(receiverId: string, amount: number, description?: string, expiresIn?: number) {
+    return this.request('/api/money-requests', {
+      method: 'POST',
+      body: JSON.stringify({ receiverId, amount, description, expiresIn }),
+    });
+  }
+
+  async getReceivedMoneyRequests(status?: string) {
+    const query = status ? `?status=${status}` : '';
+    return this.request(`/api/money-requests/received${query}`);
+  }
+
+  async getSentMoneyRequests(status?: string) {
+    const query = status ? `?status=${status}` : '';
+    return this.request(`/api/money-requests/sent${query}`);
+  }
+
+  async acceptMoneyRequest(id: string) {
+    return this.request(`/api/money-requests/${id}/accept`, {
+      method: 'POST',
+    });
+  }
+
+  async rejectMoneyRequest(id: string) {
+    return this.request(`/api/money-requests/${id}/reject`, {
+      method: 'POST',
+    });
+  }
+
+  async cancelMoneyRequest(id: string) {
+    return this.request(`/api/money-requests/${id}/cancel`, {
+      method: 'POST',
+    });
+  }
+
+  async getMoneyRequest(id: string) {
+    return this.request(`/api/money-requests/${id}`);
+  }
+
+  // Wallet Funding
+  async createWalletFunding(amount: number, provider: string, phoneNumber: string) {
+    return this.request('/api/wallet-funding', {
+      method: 'POST',
+      body: JSON.stringify({ amount, provider, phoneNumber }),
+    });
+  }
+
+  async getWalletFundingHistory(status?: string) {
+    const query = status ? `?status=${status}` : '';
+    return this.request(`/api/wallet-funding${query}`);
+  }
+
+  async getWalletFunding(id: string) {
+    return this.request(`/api/wallet-funding/${id}`);
+  }
+
+  async cancelWalletFunding(id: string) {
+    return this.request(`/api/wallet-funding/${id}/cancel`, {
+      method: 'POST',
+    });
+  }
+
+  // Admin fee management
+  async getAdminBalance() {
+    return this.request('/api/admin/fees/balance');
+  }
+
+  async getAdminFeesHistory(type?: string, isCollected?: boolean) {
+    const params = new URLSearchParams();
+    if (type) params.append('type', type);
+    if (isCollected !== undefined) params.append('isCollected', isCollected.toString());
+    const query = params.toString();
+    return this.request(`/api/admin/fees/history${query ? '?' + query : ''}`);
+  }
+
+  async getAdminBankAccounts() {
+    return this.request('/api/admin/fees/bank-accounts');
+  }
+
+  async addAdminBankAccount(data: {
+    bankName: string;
+    accountNumber: string;
+    accountName: string;
+    isDefault?: boolean;
+  }) {
+    return this.request('/api/admin/fees/bank-accounts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteAdminBankAccount(id: string) {
+    return this.request(`/api/admin/fees/bank-accounts/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async setDefaultAdminBankAccount(id: string) {
+    return this.request(`/api/admin/fees/bank-accounts/${id}/default`, {
+      method: 'POST',
+    });
+  }
+
+  async createAdminWithdrawal(data: {
+    amount: number;
+    bankAccountId: string;
+  }) {
+    return this.request('/api/admin/fees/withdrawals', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getAdminWithdrawals(status?: string) {
+    const query = status ? `?status=${status}` : '';
+    return this.request(`/api/admin/fees/withdrawals${query}`);
+  }
+
+  async processAdminWithdrawal(id: string, data: {
+    status: 'APPROVED' | 'REJECTED';
+    notes?: string;
+  }) {
+    return this.request(`/api/admin/fees/withdrawals/${id}/process`, {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   }
 
@@ -206,38 +634,15 @@ class ApiClient {
   async updateMerchantProfile(data: {
     businessName?: string;
     businessType?: string;
-    businessAddress?: string;
+    businessEmail?: string;
     phoneNumber?: string;
-    webhookUrl?: string;
-    kycTier?: string;
+    businessAddress?: string;
+    profilePicture?: string;
   }) {
     return this.request('/api/merchants/profile', {
       method: 'PUT',
       body: JSON.stringify(data),
     });
-  }
-
-  async regenerateApiKey(keyId: string) {
-    return this.request(`/api/api-keys/${keyId}/regenerate`, { method: 'POST' });
-  }
-
-  async getApiKeys() {
-    return this.request('/api/api-keys');
-  }
-
-  async createApiKey(name: string) {
-    return this.request('/api/api-keys', {
-      method: 'POST',
-      body: JSON.stringify({ name }),
-    });
-  }
-
-  async revokeApiKey(keyId: string) {
-    return this.request(`/api/api-keys/${keyId}/revoke`, { method: 'POST' });
-  }
-
-  async deleteApiKey(keyId: string) {
-    return this.request(`/api/api-keys/${keyId}`, { method: 'DELETE' });
   }
 
   async getBalance() {
@@ -530,30 +935,6 @@ class ApiClient {
   async getPaymentLinks(params?: { page?: number; limit?: number; status?: string }) {
     const query = new URLSearchParams(params as any).toString();
     return this.request(`/api/payments/links${query ? `?${query}` : ''}`);
-  }
-
-  // Webhook endpoints
-  async getWebhooks() {
-    return this.request('/api/webhooks');
-  }
-
-  async createWebhook(data: { url: string; events: string[]; description?: string }) {
-    return this.request('/api/webhooks', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async toggleWebhookStatus(webhookId: string) {
-    return this.request(`/api/webhooks/${webhookId}/toggle`, { method: 'POST' });
-  }
-
-  async deleteWebhook(webhookId: string) {
-    return this.request(`/api/webhooks/${webhookId}`, { method: 'DELETE' });
-  }
-
-  async getWebhookSecret(webhookId: string) {
-    return this.request(`/api/webhooks/${webhookId}/secret`);
   }
 
   // Notifications endpoints

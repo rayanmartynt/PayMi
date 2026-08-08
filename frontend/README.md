@@ -14,14 +14,13 @@ A modern, production-ready payment gateway web application designed for Sierra L
 - **Analytics**: Comprehensive charts and reports for business insights
 
 ### For Customers
-- **Multiple Payment Methods**: Orange Money, Afrimoney, QMoney, Visa, Mastercard
+- **Multiple Payment Methods**: Orange Money, Afrimoney, QMoney
 - **Secure Checkout**: Professional checkout experience with real-time status updates
 - **Payment Confirmation**: Email and SMS notifications
 
 ### Payment Methods Supported
 - **Mobile Money**: Orange Money, Afrimoney, QMoney
 - **Bank Payments**: Rokel Commercial Bank, Sierra Leone Commercial Bank, Union Trust Bank, Guaranty Trust Bank
-- **Cards**: Visa, Mastercard
 
 ## Technology Stack
 

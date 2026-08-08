@@ -117,50 +117,6 @@ class PaymentGateway {
   }
 }
 
-class StripePayment {
-  constructor() {
-    this.stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-  }
-
-  async createPaymentIntent(amount, currency = 'usd', metadata = {}) {
-    try {
-      const paymentIntent = await this.stripe.paymentIntents.create({
-        amount: Math.round(amount * 100), // Convert to cents
-        currency,
-        metadata,
-        automatic_payment_methods: {
-          enabled: true
-        }
-      });
-
-      return {
-        success: true,
-        clientSecret: paymentIntent.client_secret,
-        paymentIntentId: paymentIntent.id
-      };
-    } catch (error) {
-      console.error('Stripe payment error:', error);
-      throw new Error(`Stripe payment failed: ${error.message}`);
-    }
-  }
-
-  async confirmPayment(paymentIntentId) {
-    try {
-      const paymentIntent = await this.stripe.paymentIntents.retrieve(paymentIntentId);
-      
-      return {
-        success: true,
-        status: paymentIntent.status,
-        amount: paymentIntent.amount / 100
-      };
-    } catch (error) {
-      console.error('Stripe confirmation error:', error);
-      throw new Error(`Payment confirmation failed: ${error.message}`);
-    }
-  }
-}
-
 module.exports = {
-  PaymentGateway,
-  StripePayment
+  PaymentGateway
 };

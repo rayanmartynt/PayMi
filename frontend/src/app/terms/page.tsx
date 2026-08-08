@@ -37,7 +37,6 @@ export default function TermsPage() {
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2">
                 <li>Mobile money payment processing (Orange Money, Afrimoney, QMoney)</li>
-                <li>Card payment processing (Visa, Mastercard)</li>
                 <li>Bank transfer processing</li>
                 <li>Payment link generation</li>
                 <li>API access for developers</li>

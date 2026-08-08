@@ -15,16 +15,26 @@ export default function VerifyEmailPage() {
   const searchParams = useSearchParams()
   const [code, setCode] = useState(['', '', '', '', '', ''])
   const [email, setEmail] = useState('')
+  const [tempToken, setTempToken] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [showEmailInput, setShowEmailInput] = useState(false)
   const [resendSuccess, setResendSuccess] = useState('')
+  const [isDashboard, setIsDashboard] = useState(false)
 
   useEffect(() => {
     const emailParam = searchParams.get('email')
+    const tempTokenParam = searchParams.get('tempToken')
+    const dashboardParam = searchParams.get('dashboard')
     if (emailParam) {
       setEmail(decodeURIComponent(emailParam))
+    }
+    if (tempTokenParam) {
+      setTempToken(tempTokenParam)
+    }
+    if (dashboardParam === 'true') {
+      setIsDashboard(true)
     }
   }, [searchParams])
 
@@ -69,11 +79,40 @@ export default function VerifyEmailPage() {
     setLoading(true)
 
     try {
-      await api.verifyEmail(verificationCode, email)
-      setSuccess(true)
-      setTimeout(() => {
-        router.push('/auth/login')
-      }, 2000)
+      // If tempToken exists, use complete registration flow
+      if (tempToken) {
+        const response = await api.completeRegistrationEmail(tempToken, verificationCode) as { token: string; refreshToken: string; user: { role: string } }
+        setSuccess(true)
+        
+        // Store tokens and redirect
+        localStorage.setItem('token', response.token)
+        localStorage.setItem('refreshToken', response.refreshToken)
+        
+        setTimeout(() => {
+          if (response.user.role === 'ADMIN') {
+            router.push('/admin')
+          } else if (response.user.role === 'MERCHANT') {
+            router.push('/dashboard')
+          } else {
+            router.push('/customer')
+          }
+        }, 2000)
+      } else if (isDashboard) {
+        // Dashboard flow: user is already authenticated
+        const response = await api.verifyEmailDashboard(verificationCode)
+        setSuccess(true)
+        
+        setTimeout(() => {
+          router.push('/dashboard')
+        }, 2000)
+      } else {
+        // Legacy flow for existing email verification
+        await api.verifyEmail(verificationCode, email)
+        setSuccess(true)
+        setTimeout(() => {
+          router.push('/auth/login')
+        }, 2000)
+      }
     } catch (err: any) {
       setError(err.message || 'Invalid or expired verification code')
     } finally {

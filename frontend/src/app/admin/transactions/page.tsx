@@ -100,8 +100,6 @@ export default function AdminTransactionsPage() {
         { label: 'Orange Money', value: 'orange_money' },
         { label: 'Afrimoney', value: 'afrimoney' },
         { label: 'QMoney', value: 'qmoney' },
-        { label: 'Visa', value: 'visa' },
-        { label: 'Mastercard', value: 'mastercard' },
       ],
     },
     {

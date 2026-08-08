@@ -15,6 +15,20 @@
       "when": 1786073199915,
       "tag": "0001_acoustic_lockheed",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786186147763,
+      "tag": "0002_cuddly_dormammu",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786187162289,
+      "tag": "0003_foamy_kitty_pryde",
+      "breakpoints": true
     }
   ]
 }

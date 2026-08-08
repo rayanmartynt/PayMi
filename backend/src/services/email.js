@@ -56,6 +56,9 @@ const sendEmail = async (to, subject, html, text = '') => {
 };
 
 const sendVerificationEmail = async (email, verificationCode) => {
+  // Log verification code for development
+  console.log(`[EMAIL] Verification code for ${email}: ${verificationCode}`);
+  
   const html = loadTemplate('verification', { verificationCode });
   return sendEmail(email, 'Verify Your Email Address', html);
 };

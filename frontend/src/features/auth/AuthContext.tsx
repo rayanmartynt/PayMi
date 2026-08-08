@@ -6,9 +6,15 @@ import { api } from '@/lib/api';
 interface User {
   id: string;
   email: string;
+  name: string;
   role: string;
-  kycStatus: string;
+  kycStatus?: string;
   verified: boolean;
+  profilePicture?: string;
+  customer?: {
+    id: string;
+    profilePicture?: string;
+  };
   merchant?: {
     id: string;
     businessName: string;

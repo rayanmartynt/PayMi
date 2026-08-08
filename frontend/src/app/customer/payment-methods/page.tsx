@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
-import { CreditCard, Plus, Trash2, Star } from 'lucide-react'
+import { Phone, Plus, Trash2, Star } from 'lucide-react'
 import { api } from '@/lib/api'
 import ProtectedRoute from '@/components/ProtectedRoute'
 
@@ -208,7 +208,7 @@ export default function CustomerPaymentMethodsPage() {
                     )}
                     <div className="flex items-start gap-4">
                       <div className={`h-12 w-12 rounded-lg ${getProviderColor(method.type)} flex items-center justify-center`}>
-                        <CreditCard className="h-6 w-6 text-white" />
+                        <Phone className="h-6 w-6 text-white" />
                       </div>
                       <div className="flex-1">
                         <p className="font-medium">{getProviderName(method.type)}</p>

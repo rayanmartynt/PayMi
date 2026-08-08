@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { User, Building2, Mail, Phone, Lock, Bell, Globe, CreditCard, Loader2, Camera, Shield, Key, Copy, Check } from 'lucide-react'
+import { User, Building2, Mail, Phone, Lock, Bell, Globe, Wallet, Loader2, Camera, Shield, Key, Copy, Check } from 'lucide-react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 
@@ -686,7 +686,7 @@ export default function SettingsPage() {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <CreditCard className="h-5 w-5 text-muted-foreground" />
+              <Wallet className="h-5 w-5 text-muted-foreground" />
               <div>
                 <div className="font-medium">Default Payment Method</div>
                 <div className="text-sm text-muted-foreground">Set your preferred payment method</div>

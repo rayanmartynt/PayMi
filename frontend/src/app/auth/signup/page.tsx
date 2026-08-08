@@ -22,8 +22,9 @@ const businessTypes = [
 ]
 
 export default function SignupPage() {
-  const [step, setStep] = useState(0) // Step 0: Account Type Selection
+  const [step, setStep] = useState(0) // Step 0: Account Type Selection, Step 1: Verification Method, Step 2: Personal Info, Step 3: Business Info, Step 4: Review
   const [accountType, setAccountType] = useState<'individual' | 'business' | ''>('')
+  const [verificationMethod, setVerificationMethod] = useState<'email' | 'phone' | ''>('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedBusinessType, setSelectedBusinessType] = useState('')
@@ -51,6 +52,8 @@ export default function SignupPage() {
     agreeToPrivacy: false,
   })
 
+  const [tempToken, setTempToken] = useState('')
+
   const handleNext = () => {
     setError('')
     if (step === 0) {
@@ -60,8 +63,22 @@ export default function SignupPage() {
       }
       setStep(1)
     } else if (step === 1) {
-      if (!formData.fullName || !formData.email || !formData.phone || !formData.password) {
+      if (!verificationMethod) {
+        setError('Please select a verification method')
+        return
+      }
+      setStep(2)
+    } else if (step === 2) {
+      if (!formData.fullName || !formData.password) {
         setError('Please fill in all required fields')
+        return
+      }
+      if (verificationMethod === 'email' && !formData.email) {
+        setError('Email is required for email verification')
+        return
+      }
+      if (verificationMethod === 'phone' && !formData.phone) {
+        setError('Phone number is required for phone verification')
         return
       }
       if (formData.password !== formData.confirmPassword) {
@@ -74,24 +91,26 @@ export default function SignupPage() {
       }
       // Skip business info step if individual
       if (accountType === 'individual') {
-        setStep(3)
+        setStep(4)
       } else {
-        setStep(2)
+        setStep(3)
       }
-    } else if (step === 2) {
+    } else if (step === 3) {
       if (!formData.businessName || !formData.businessType || !formData.businessAddress) {
         setError('Please fill in all required fields')
         return
       }
-      setStep(3)
+      setStep(4)
     }
   }
 
   const handleBack = () => {
     setError('')
-    if (step === 3 && accountType === 'individual') {
+    if (step === 4 && accountType === 'individual') {
       // Skip business info step when going back for individual accounts
-      setStep(1)
+      setStep(2)
+    } else if (step === 3) {
+      setStep(2)
     } else {
       setStep(step - 1)
     }
@@ -109,36 +128,36 @@ export default function SignupPage() {
     setLoading(true)
 
     try {
-      console.log('Submitting registration with data:', {
+      console.log('Initiating registration with data:', {
         name: formData.fullName,
+        verificationMethod,
         email: formData.email,
+        phone: formData.phone,
         accountType,
         businessName: formData.businessName,
         businessType: formData.businessType,
-        phone: formData.phone,
       })
 
-      // Register the user
-      if (accountType === 'business') {
-        await api.register({
-          name: formData.fullName,
-          email: formData.email,
-          password: formData.password,
-          phoneNumber: formData.phone,
-          businessName: formData.businessName,
-          businessType: formData.businessType,
-        })
-      } else {
-        await api.register({
-          name: formData.fullName,
-          email: formData.email,
-          password: formData.password,
-          phoneNumber: formData.phone,
-        })
-      }
+      // Initiate registration (send verification code)
+      const response = await api.initiateRegistration({
+        name: formData.fullName,
+        password: formData.password,
+        verificationMethod,
+        email: verificationMethod === 'email' ? formData.email : undefined,
+        phoneNumber: verificationMethod === 'phone' ? formData.phone : undefined,
+        role: accountType === 'business' ? 'MERCHANT' : 'CUSTOMER',
+      }) as { tempToken: string; verificationMethod: string; contact: string }
 
-      console.log('Registration successful, redirecting to verify-email')
-      router.push(`/auth/verify-email?email=${encodeURIComponent(formData.email)}`)
+      setTempToken(response.tempToken)
+
+      console.log('Verification code sent, redirecting to verification page')
+      
+      // Redirect to appropriate verification page
+      if (verificationMethod === 'email') {
+        router.push(`/auth/verify-email?tempToken=${response.tempToken}&email=${encodeURIComponent(formData.email)}`)
+      } else {
+        router.push(`/auth/verify-phone?tempToken=${response.tempToken}&phone=${encodeURIComponent(formData.phone)}`)
+      }
     } catch (err: any) {
       console.error('Registration error:', err)
       setError(err.message || 'Registration failed. Please try again.')
@@ -170,31 +189,33 @@ export default function SignupPage() {
             <div className="flex items-center justify-between mb-4">
               <CardTitle>
                 {step === 0 && 'Choose Your Account Type'}
-                {step === 1 && 'Personal Information'}
-                {step === 2 && 'Business Information'}
-                {step === 3 && 'Review & Confirm'}
+                {step === 1 && 'Choose Verification Method'}
+                {step === 2 && 'Personal Information'}
+                {step === 3 && 'Business Information'}
+                {step === 4 && 'Review & Confirm'}
               </CardTitle>
-              {step > 0 && <Badge variant="outline">Step {step} of {accountType === 'individual' ? 2 : 3}</Badge>}
+              {step > 0 && <Badge variant="outline">Step {step} of {accountType === 'individual' ? 3 : 4}</Badge>}
             </div>
             <CardDescription>
               {step === 0 && 'Are you signing up as an individual or representing a business?'}
-              {step === 1 && 'Tell us about yourself'}
-              {step === 2 && 'Tell us about your business'}
-              {step === 3 && 'Review and confirm'}
+              {step === 1 && 'How would you like to verify your account?'}
+              {step === 2 && 'Tell us about yourself'}
+              {step === 3 && 'Tell us about your business'}
+              {step === 4 && 'Review and confirm'}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {/* Progress Steps */}
             {step > 0 && (
               <div className="flex items-center justify-between mb-8">
-                {Array.from({ length: accountType === 'individual' ? 2 : 3 }, (_, i) => i + 1).map((s) => (
+                {Array.from({ length: accountType === 'individual' ? 3 : 4 }, (_, i) => i + 1).map((s) => (
                   <div key={s} className="flex items-center flex-1">
                     <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
                       s <= step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
                     }`}>
                       {s < step ? <CheckCircle className="h-4 w-4" /> : s}
                     </div>
-                    {s < (accountType === 'individual' ? 2 : 3) && <div className={`flex-1 h-1 mx-2 ${s < step ? 'bg-primary' : 'bg-muted'}`} />}
+                    {s < (accountType === 'individual' ? 3 : 4) && <div className={`flex-1 h-1 mx-2 ${s < step ? 'bg-primary' : 'bg-muted'}`} />}
                   </div>
                 ))}
               </div>
@@ -281,6 +302,78 @@ export default function SignupPage() {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                 >
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setVerificationMethod('email')}
+                      className={`p-6 rounded-xl border-2 text-left transition-all ${
+                        verificationMethod === 'email'
+                          ? 'border-primary bg-primary/5 shadow-md'
+                          : 'border-border hover:border-primary/50 hover:shadow-sm'
+                      }`}
+                    >
+                      <div className="flex items-center gap-4 mb-3">
+                        <div className={`p-3 rounded-lg ${
+                          verificationMethod === 'email' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                        }`}>
+                          <Mail className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-lg">Email</div>
+                          <div className="text-sm text-muted-foreground">Email verification</div>
+                        </div>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Receive a verification code via email to verify your account
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setVerificationMethod('phone')}
+                      className={`p-6 rounded-xl border-2 text-left transition-all ${
+                        verificationMethod === 'phone'
+                          ? 'border-primary bg-primary/5 shadow-md'
+                          : 'border-border hover:border-primary/50 hover:shadow-sm'
+                      }`}
+                    >
+                      <div className="flex items-center gap-4 mb-3">
+                        <div className={`p-3 rounded-lg ${
+                          verificationMethod === 'phone' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                        }`}>
+                          <Phone className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-lg">Phone</div>
+                          <div className="text-sm text-muted-foreground">SMS verification</div>
+                        </div>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Receive a verification code via SMS to verify your account
+                      </p>
+                    </button>
+                  </div>
+
+                  <div className="flex justify-between gap-3 pt-4">
+                    <Button type="button" onClick={handleBack} variant="outline">
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      Back
+                    </Button>
+                    <Button type="button" onClick={handleNext} variant="gradient" disabled={!verificationMethod}>
+                      Continue
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-4">
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                >
                   <div className="space-y-2">
                   <label className="text-sm font-medium">Full Name *</label>
                   <div className="relative">
@@ -295,35 +388,39 @@ export default function SignupPage() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Email Address *</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      type="email"
-                      placeholder="michael@example.com"
-                      value={formData.email}
-                      onChange={(e) => setFormData({...formData, email: e.target.value})}
-                      className="pl-10"
-                      required
-                    />
+                {verificationMethod === 'email' && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Email Address *</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        type="email"
+                        placeholder="michael@example.com"
+                        value={formData.email}
+                        onChange={(e) => setFormData({...formData, email: e.target.value})}
+                        className="pl-10"
+                        required
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Phone Number *</label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      type="tel"
-                      placeholder="+232 76 123 456"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                      className="pl-10"
-                      required
-                    />
+                {verificationMethod === 'phone' && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Phone Number *</label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        type="tel"
+                        placeholder="+232 76 123 456"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                        className="pl-10"
+                        required
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -384,7 +481,7 @@ export default function SignupPage() {
                 </div>
             )}
 
-            {step === 2 && (
+            {step === 3 && (
               <div className="space-y-4">
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
@@ -460,7 +557,7 @@ export default function SignupPage() {
               </div>
             )}
 
-            {step === 3 && (
+            {step === 4 && (
               <div className="space-y-4">
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
@@ -471,25 +568,37 @@ export default function SignupPage() {
                     <div className="text-sm text-muted-foreground">Full Name</div>
                     <div className="font-medium">{formData.fullName}</div>
                   </div>
+                  {verificationMethod === 'email' && (
+                    <div>
+                      <div className="text-sm text-muted-foreground">Email</div>
+                      <div className="font-medium">{formData.email}</div>
+                    </div>
+                  )}
+                  {verificationMethod === 'phone' && (
+                    <div>
+                      <div className="text-sm text-muted-foreground">Phone</div>
+                      <div className="font-medium">{formData.phone}</div>
+                    </div>
+                  )}
+                  {accountType === 'business' && (
+                    <>
+                      <div>
+                        <div className="text-sm text-muted-foreground">Business Name</div>
+                        <div className="font-medium">{formData.businessName}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">Business Type</div>
+                        <div className="font-medium">{businessTypes.find(t => t.id === formData.businessType)?.name}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">Business Address</div>
+                        <div className="font-medium">{formData.businessAddress}</div>
+                      </div>
+                    </>
+                  )}
                   <div>
-                    <div className="text-sm text-muted-foreground">Email</div>
-                    <div className="font-medium">{formData.email}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Phone</div>
-                    <div className="font-medium">{formData.phone}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Business Name</div>
-                    <div className="font-medium">{formData.businessName}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Business Type</div>
-                    <div className="font-medium">{businessTypes.find(t => t.id === formData.businessType)?.name}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Business Address</div>
-                    <div className="font-medium">{formData.businessAddress}</div>
+                    <div className="text-sm text-muted-foreground">Verification Method</div>
+                    <div className="font-medium capitalize">{verificationMethod}</div>
                   </div>
                 </div>
 

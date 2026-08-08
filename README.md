@@ -1,6 +1,6 @@
 # PayMi
 
-Sierra Leone's premier payment gateway - accept payments via Orange Money, Afrimoney, QMoney, Visa, and Mastercard.
+Sierra Leone's premier payment gateway - accept payments via Orange Money, Afrimoney, and QMoney.
 
 ## 🚀 Quick Start
 
@@ -120,7 +120,7 @@ PayMi/
 - RESTful API with Express.js
 - JWT authentication
 - Role-based access control (Merchant, Admin, Customer)
-- Payment processing (Orange Money, Afrimoney, QMoney, Visa, Mastercard)
+- Payment processing (Orange Money, Afrimoney, QMoney)
 - Transaction management
 - Webhook support
 - Email notifications via Resend
@@ -139,12 +139,8 @@ The application uses JWT-based authentication:
 
 ## 💳 Payment Methods Supported
 
-- **Orange Money** - Mobile money
-- **Afrimoney** - Mobile money
-- **QMoney** - Mobile money
-- **Visa** - Card payments via Stripe
-- **Mastercard** - Card payments via Stripe
-- **Bank Transfer** - Direct bank transfers
+- **Mobile Money**: Orange Money, Afrimoney, QMoney
+- **Bank Payments**: Rokel Commercial Bank, Sierra Leone Commercial Bank, Union Trust Bank, Guaranty Trust Bank
 
 ## 📊 API Endpoints
 
