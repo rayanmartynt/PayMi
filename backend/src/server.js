@@ -26,19 +26,7 @@ const PORT = process.env.PORT || 5000;
 
 // Security headers
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      frameSrc: ["'none'"],
-    },
-  },
+  contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false
 }));
 
@@ -75,7 +63,16 @@ app.use(generalLimiter);
 // Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Serve static files with CORS headers
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'http://localhost:3000');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, '../uploads')));
+
 app.use(require('./middleware/sandbox').sandboxMiddleware);
 app.use(require('./middleware/i18n').i18nMiddleware);
 
@@ -101,15 +98,27 @@ module.exports = { db, io, authLimiter, twoFactorLimiter, strictLimiter };
 
 // Routes
 app.use('/api/customers', require('./routes/customers'));
+app.use('/api/customers/payments', require('./routes/customerPayments'));
+app.use('/api/customers/payment-methods', require('./routes/customerPaymentMethods'));
 app.use('/api/customers/transfers', require('./routes/customerTransfers'));
 app.use('/api/customers/withdrawals', require('./routes/customerWithdrawals'));
 app.use('/api/merchants', require('./routes/merchants'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/two-factor', require('./routes/twoFactor'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/admin/fees', require('./routes/adminFees'));
+// Social features
+app.use('/api/contacts', require('./routes/contacts'));
+app.use('/api/friendships', require('./routes/friendships'));
+app.use('/api/chats', require('./routes/chats'));
+app.use('/api/merchant-payments', require('./routes/merchantPayments'));
+app.use('/api/money-requests', require('./routes/moneyRequests'));
+app.use('/api/wallet-funding', require('./routes/walletFunding'));
+// API features
+app.use('/api/merchants/api-keys', require('./routes/merchantApiKeys'));
+app.use('/api/merchants/webhooks', require('./routes/merchantWebhooks'));
+app.use('/api/v1', require('./routes/apiPayments'));
 // Temporarily disabled routes that need Prisma->Drizzle conversion
-// app.use('/api/customers/payments', require('./routes/customerPayments'));
-// app.use('/api/customers/payment-methods', require('./routes/customerPaymentMethods'));
 // app.use('/api/customers/disputes', require('./routes/customerDisputes'));
 // app.use('/api/customers/support-tickets', require('./routes/customerSupportTickets'));
 // app.use('/api/sandbox', require('./routes/sandbox'));

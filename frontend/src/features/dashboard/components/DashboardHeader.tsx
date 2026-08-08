@@ -6,8 +6,7 @@ import { useState } from 'react';
 import Image from 'next/image'
 
 export function DashboardHeader() {
-  const { sidebarOpen, setSidebarOpen, darkMode, toggleDarkMode } = useStore()
-  const { merchant } = useStore();
+  const { sidebarOpen, setSidebarOpen, darkMode, toggleDarkMode, user } = useStore()
   const [unreadCount, setUnreadCount] = useState(0);
 
   return (
@@ -54,7 +53,27 @@ export function DashboardHeader() {
           {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
         </Button>
 
-        <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-600 to-purple-600" />
+        <div className="flex items-center gap-3">
+          {user?.profilePicture || user?.customer?.profilePicture ? (
+            <img
+              src={user.profilePicture || user.customer?.profilePicture}
+              alt={user.name}
+              className="h-8 w-8 rounded-full object-cover"
+              onError={(e) => {
+                // Fallback to initial if image fails to load
+                e.currentTarget.style.display = 'none';
+                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+              }}
+            />
+          ) : null}
+          <div className={`h-8 w-8 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white text-sm font-medium ${user?.profilePicture || user?.customer?.profilePicture ? 'hidden' : ''}`}>
+            {user?.name?.charAt(0) || user?.email?.charAt(0) || 'U'}
+          </div>
+          <div className="hidden md:block">
+            <p className="text-sm font-medium">{user?.name || 'User'}</p>
+            <p className="text-xs text-muted-foreground">{user?.email}</p>
+          </div>
+        </div>
       </div>
     </header>
   )

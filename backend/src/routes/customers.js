@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { customerAuth } = require('../middleware/auth');
 const db = require('../db/index');
-const { eq, desc, and, like, or } = require('drizzle-orm');
+const { eq, desc, and, like, or, gte, lte, sql } = require('drizzle-orm');
 const { customers, transactions, users } = require('../db/schema');
 const {
   getCustomerProfile,
@@ -62,6 +62,7 @@ router.post('/profile/picture', customerAuth, upload.single('profilePicture'), u
 router.get('/analytics', customerAuth, async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
+    
     const customerResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
     const customer = customerResult[0];
 
@@ -69,19 +70,16 @@ router.get('/analytics', customerAuth, async (req, res) => {
       return res.status(404).json({ error: 'Customer not found' });
     }
 
-    let conditions = [eq(transactions.customerId, customer.id), eq(transactions.status, 'SUCCESSFUL')];
-    
-    if (startDate) {
-      conditions.push(eq(transactions.createdAt, new Date(startDate)));
-    }
-    if (endDate) {
-      conditions.push(eq(transactions.createdAt, new Date(endDate)));
-    }
-
-    const transactionsResult = await db.select()
-      .from(transactions)
-      .where(and(...conditions))
-      .orderBy(desc(transactions.createdAt));
+    const transactionsResult = await db.execute(sql`
+      SELECT 
+        id, merchant_id, customer_id, amount, currency, payment_method, 
+        status, description, metadata, created_at, updated_at
+      FROM transactions
+      WHERE customer_id = ${customer.id} AND status = 'SUCCESSFUL'
+      ${startDate ? sql`AND created_at >= ${new Date(startDate)}` : sql``}
+      ${endDate ? sql`AND created_at <= ${new Date(endDate)}` : sql``}
+      ORDER BY created_at DESC
+    `);
 
     const totalSpent = transactionsResult.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const transactionCount = transactionsResult.length;
@@ -93,7 +91,7 @@ router.get('/analytics', customerAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('Get customer analytics error:', error);
-    res.status(500).json({ error: 'Failed to get analytics' });
+    res.status(500).json({ error: 'Failed to get analytics', details: error.message });
   }
 });
 

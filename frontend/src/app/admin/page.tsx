@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { Users, CreditCard, Wallet, AlertTriangle, Activity, ShieldCheck, Loader2, Building2, Mail, Calendar } from 'lucide-react'
+import { Users, Wallet, AlertTriangle, Activity, ShieldCheck, Loader2, Building2, Mail, Calendar } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { useRouter } from 'next/navigation'
@@ -111,7 +111,7 @@ export default function AdminPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Transactions</CardTitle>
-            <CreditCard className="h-4 w-4 text-muted-foreground" />
+            <Wallet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats?.totalTransactions?.toLocaleString() || 0}</div>

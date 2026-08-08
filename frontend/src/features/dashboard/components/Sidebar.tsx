@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { 
   LayoutDashboard, 
-  CreditCard, 
   Users, 
   Key, 
   Book, 
@@ -16,22 +15,24 @@ import {
   Wallet,
   BarChart3,
   TrendingUp,
-  Globe
+  Globe,
+  Code
 } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Payments', href: '/dashboard/payments', icon: CreditCard },
+  { name: 'Payments', href: '/dashboard/payments', icon: Wallet },
   { name: 'Transactions', href: '/dashboard/transactions', icon: FileText },
   { name: 'Customers', href: '/dashboard/customers', icon: Users },
   { name: 'Settlements', href: '/dashboard/settlements', icon: Wallet },
   { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
   { name: 'Reports', href: '/dashboard/reports', icon: TrendingUp },
-  { name: 'API Keys', href: '/dashboard/api-keys', icon: Key },
-  { name: 'Webhooks', href: '/dashboard/webhooks', icon: Globe },
+  { name: 'Developer', href: '/dashboard/developer', icon: Code },
+  { name: 'API Keys', href: '/dashboard/developer/api-keys', icon: Key },
+  { name: 'Webhooks', href: '/dashboard/developer/webhooks', icon: Globe },
+  { name: 'API Docs', href: '/dashboard/developer/docs', icon: Book },
   { name: 'KYC', href: '/dashboard/kyc', icon: ShieldCheck },
-  { name: 'Documentation', href: '/dashboard/docs', icon: Book },
   { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ]

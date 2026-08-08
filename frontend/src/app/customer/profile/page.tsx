@@ -8,8 +8,10 @@ import { User, Mail, Phone, MapPin, Save, Camera, Upload } from 'lucide-react'
 import { api } from '@/lib/api'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { toast } from 'sonner'
+import { useStore } from '@/store/useStore'
 
 export default function CustomerProfilePage() {
+  const { setUser } = useStore()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingPicture, setUploadingPicture] = useState(false)
@@ -63,7 +65,7 @@ export default function CustomerProfilePage() {
 
     setUploadingPicture(true)
     const formData = new FormData()
-    formData.append('picture', file)
+    formData.append('profilePicture', file)
 
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/customers/profile/picture`, {
@@ -82,6 +84,19 @@ export default function CustomerProfilePage() {
 
       toast.success('Profile picture updated successfully')
       setPreviewImage(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}${data.profilePicture}`)
+      
+      // Update user in store with new profile picture
+      const updatedProfile = await api.getCustomerProfile() as any
+      const fullProfilePictureUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}${updatedProfile.profilePicture}`
+      setUser({
+        ...updatedProfile.user,
+        profilePicture: fullProfilePictureUrl,
+        customer: {
+          id: updatedProfile.id,
+          profilePicture: fullProfilePictureUrl
+        }
+      })
+      
       loadProfile()
     } catch (error: any) {
       toast.error(error.message || 'Failed to upload profile picture')
@@ -245,9 +260,29 @@ export default function CustomerProfilePage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <div className={`h-2 w-2 rounded-full ${profile?.user?.verified ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                {profile?.user?.verified ? 'Email verified' : 'Email not verified'}
+              <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <div className={`h-2 w-2 rounded-full ${profile?.user?.emailVerified ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                  {profile?.user?.emailVerified ? 'Email verified' : 'Email not verified'}
+                </div>
+                {!profile?.user?.emailVerified && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await api.resendVerificationCode(profile?.user?.email || '')
+                        toast.success('Verification code sent to your email')
+                      } catch (error: any) {
+                        toast.error(error.message || 'Failed to send verification code')
+                      }
+                    }}
+                    disabled={saving}
+                  >
+                    Verify now
+                  </Button>
+                )}
               </div>
 
               <Button

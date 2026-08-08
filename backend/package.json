@@ -19,6 +19,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@zavudev/sdk": "^0.53.0",
     "amqplib": "^2.0.1",
     "axios": "^1.8.2",
     "bcryptjs": "^2.4.3",
@@ -46,7 +47,6 @@
     "resend": "^4.0.1",
     "socket.io": "^4.8.1",
     "speakeasy": "^2.0.0",
-    "stripe": "^17.4.0",
     "uuid": "^11.1.1",
     "validator": "^13.12.0",
     "web-push": "^3.6.7"

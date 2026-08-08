@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { ArrowUpRight, ArrowDownRight, TrendingUp, CreditCard, CheckCircle, XCircle, Clock, AlertTriangle, ArrowRight } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, TrendingUp, Wallet, CheckCircle, XCircle, Clock, AlertTriangle, ArrowRight } from 'lucide-react'
 import { api } from '@/lib/api';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { formatCurrency } from '@/lib/utils'
@@ -12,6 +12,7 @@ import { RevenueChart } from '@/features/dashboard/components/RevenueChart'
 import { TransactionsTable } from '@/features/dashboard/components/TransactionsTable'
 import { motion, useMotionValue, useTransform, useSpring } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 function StatCard({ children, className }: { children: React.ReactNode; className?: string }) {
   const cardRef = useRef<HTMLDivElement>(null)
@@ -68,44 +69,35 @@ export default function DashboardPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        // Try to fetch merchant profile first
-        let merchant: any = null;
-        try {
-          merchant = await api.getMerchantProfile();
-          setOnboardingStep(merchant.onboardingStep || 'COMPLETED');
-        } catch (err) {
-          console.error('Failed to fetch merchant profile:', err);
-          setError('Failed to load merchant profile. Please try logging in again.');
-          return;
-        }
+        // Fetch merchant profile
+        const merchant = await api.getMerchantProfile();
+        setOnboardingStep(merchant.onboardingStep || 'COMPLETED');
         
-        // Try to fetch analytics and transactions, but don't fail if they're empty
+        // Fetch analytics
         let analytics: any = {
           dailyRevenue: [],
           revenue: 0,
           transactions: 0
         };
-        let transactions: any[] = [];
-
         try {
           analytics = await api.getAnalytics();
         } catch (err: any) {
           console.log('No analytics data yet:', err);
-          // Don't show toast for expected "no data" scenarios
         }
 
+        // Fetch transactions
+        let transactions: any[] = [];
         try {
           const transactionsData: any = await api.getTransactions();
           transactions = transactionsData.transactions || [];
         } catch (err: any) {
           console.log('No transactions yet:', err);
-          // Don't show toast for expected "no data" scenarios
         }
 
         setData({ analytics, transactions, merchant });
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to fetch dashboard data', err);
-        setError(err instanceof Error ? err.message : String(err));
+        setError(err.message || 'Failed to load dashboard data');
       }
     }
     fetchData();
@@ -114,21 +106,79 @@ export default function DashboardPage() {
   if (error) return <div className="text-red-500">Error loading data: {error}</div>;
   if (!data) return <div className="flex items-center justify-center h-64"><span className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></span> Loading...</div>;
 
-  const { analytics: mockAnalytics, transactions: mockTransactions, merchant: mockMerchant } = data;
+  const { analytics, transactions, merchant } = data;
 
-  const todayRevenue = mockAnalytics.dailyRevenue[mockAnalytics.dailyRevenue.length - 1]?.amount || 0
-  const yesterdayRevenue = mockAnalytics.dailyRevenue[mockAnalytics.dailyRevenue.length - 2]?.amount || 0
+  const todayRevenue = analytics.dailyRevenue[analytics.dailyRevenue.length - 1]?.amount || 0
+  const yesterdayRevenue = analytics.dailyRevenue[analytics.dailyRevenue.length - 2]?.amount || 0
   const revenueChange = yesterdayRevenue > 0 ? ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100 : 0
 
-  const successfulPayments = mockTransactions.filter((t: any) => t.status === 'successful').length;
-  const failedPayments = mockTransactions.filter((t: any) => t.status === 'failed').length;
-  const pendingPayments = mockTransactions.filter((t: any) => t.status === 'pending').length;
+  const successfulPayments = transactions.filter((t: any) => t.status === 'successful').length;
+  const failedPayments = transactions.filter((t: any) => t.status === 'failed').length;
+  const pendingPayments = transactions.filter((t: any) => t.status === 'pending').length;
   const totalPayments = successfulPayments + failedPayments + pendingPayments;
   const successRate = totalPayments ? (successfulPayments / totalPayments) * 100 : 0;
 
   return (
     <ProtectedRoute>
       <div className="space-y-6">
+        {/* Verification Status Banner */}
+        {(!merchant.emailVerified || !merchant.phoneVerified) && (
+          <div className="bg-gradient-to-r from-amber-500 to-orange-600 text-white p-6 rounded-xl shadow-lg">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-white/20 rounded-lg">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg mb-1">Complete Your Verification</h3>
+                <p className="text-white/90 text-sm mb-3">
+                  {!merchant.emailVerified && !merchant.phoneVerified 
+                    ? 'You need to verify both your email and phone number to perform transactions.'
+                    : !merchant.emailVerified 
+                    ? 'You need to verify your email to perform transactions.'
+                    : 'You need to verify your phone number to perform transactions.'}
+                </p>
+                <div className="flex gap-3">
+                  {!merchant.emailVerified && (
+                    <Button
+                      variant="secondary"
+                      onClick={async () => {
+                        try {
+                          await api.resendVerificationCode();
+                          toast.success('Verification code sent to your email');
+                        } catch (error: any) {
+                          toast.error(error.message || 'Failed to send verification code');
+                        }
+                      }}
+                      className="bg-white text-amber-600 hover:bg-white/90"
+                    >
+                      Verify Email
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  )}
+                  {!merchant.phoneVerified && (
+                    <Button
+                      variant="secondary"
+                      onClick={async () => {
+                        try {
+                          await api.sendPhoneVerification();
+                          toast.success('Verification code sent to your phone');
+                          router.push(`/auth/verify-phone?dashboard=true`);
+                        } catch (error: any) {
+                          toast.error(error.message || 'Failed to send verification code');
+                        }
+                      }}
+                      className="bg-white text-amber-600 hover:bg-white/90"
+                    >
+                      Verify Phone
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Onboarding Banner */}
         {onboardingStep !== 'COMPLETED' && (
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-xl shadow-lg">
@@ -156,7 +206,7 @@ export default function DashboardPage() {
 
         <div>
           <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">Welcome back, {mockMerchant.name}</p>
+          <p className="text-muted-foreground">Welcome back, {merchant.name}</p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -187,10 +237,10 @@ export default function DashboardPage() {
           <StatCard>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Transactions</CardTitle>
-              <CreditCard className="h-4 w-4 text-muted-foreground" />
+              <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{mockAnalytics.transactions}</div>
+              <div className="text-2xl font-bold">{analytics.transactions}</div>
               <p className="text-xs text-muted-foreground mt-1">All time</p>
             </CardContent>
           </StatCard>
@@ -212,7 +262,7 @@ export default function DashboardPage() {
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(mockAnalytics.revenue)}</div>
+              <div className="text-2xl font-bold">{formatCurrency(analytics.revenue)}</div>
               <p className="text-xs text-muted-foreground mt-1">All time</p>
             </CardContent>
           </StatCard>
@@ -224,7 +274,7 @@ export default function DashboardPage() {
               <CardTitle>Revenue Overview</CardTitle>
             </CardHeader>
             <CardContent>
-              <RevenueChart data={mockAnalytics.dailyRevenue} />
+              <RevenueChart data={analytics.dailyRevenue} />
             </CardContent>
           </Card>
 
@@ -263,7 +313,7 @@ export default function DashboardPage() {
             <CardTitle>Recent Transactions</CardTitle>
           </CardHeader>
           <CardContent>
-            <TransactionsTable transactions={mockTransactions.slice(0, 5)} />
+            <TransactionsTable transactions={transactions.slice(0, 5)} />
           </CardContent>
         </Card>
       </div>

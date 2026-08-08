@@ -51,7 +51,19 @@ export function CustomerHeader() {
           </Button>
 
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white text-sm font-medium">
+            {user?.profilePicture || user?.customer?.profilePicture ? (
+              <img
+                src={user.profilePicture || user.customer?.profilePicture}
+                alt={user.name}
+                className="h-8 w-8 rounded-full object-cover"
+                onError={(e) => {
+                  // Fallback to initial if image fails to load
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                }}
+              />
+            ) : null}
+            <div className={`h-8 w-8 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white text-sm font-medium ${user?.profilePicture || user?.customer?.profilePicture ? 'hidden' : ''}`}>
               {user?.name?.charAt(0) || user?.email?.charAt(0) || 'U'}
             </div>
             <div className="hidden md:block">

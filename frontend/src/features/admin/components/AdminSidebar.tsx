@@ -7,23 +7,25 @@ import Image from 'next/image'
 import { 
   LayoutDashboard, 
   Users, 
-  CreditCard, 
   Wallet, 
   AlertTriangle, 
   FileText, 
-  ShieldCheck, 
-  BarChart3,
+  ShieldCheck,
   Settings,
   LogOut,
+  Bell,
   Activity,
-  UserCog
+  BarChart3,
+  UserCog,
+  DollarSign
 } from 'lucide-react'
 
 const navigation = [
   { name: 'Overview', href: '/admin', icon: LayoutDashboard },
   { name: 'Merchants', href: '/admin/merchants', icon: Users },
-  { name: 'Transactions', href: '/admin/transactions', icon: CreditCard },
+  { name: 'Transactions', href: '/admin/transactions', icon: Wallet },
   { name: 'Withdrawals', href: '/admin/withdrawals', icon: Wallet },
+  { name: 'Fee Management', href: '/admin/fees', icon: DollarSign },
   { name: 'Disputes', href: '/admin/disputes', icon: AlertTriangle },
   { name: 'KYC Approvals', href: '/admin/kyc', icon: ShieldCheck },
   { name: 'API Usage', href: '/admin/api-usage', icon: Activity },

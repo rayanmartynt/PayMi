@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 const faqs = [
   {
     question: 'What payment methods do you support?',
-    answer: 'We support all major payment methods in Sierra Leone including Orange Money, Afrimoney, QMoney, Visa, Mastercard, and bank transfers from Rokel Commercial Bank, Sierra Leone Commercial Bank, Union Trust Bank, and Guaranty Trust Bank.',
+    answer: 'We support all major payment methods in Sierra Leone including Orange Money, Afrimoney, QMoney, and bank transfers from Rokel Commercial Bank, Sierra Leone Commercial Bank, Union Trust Bank, and Guaranty Trust Bank.',
   },
   {
     question: 'How long does it take to receive settlements?',

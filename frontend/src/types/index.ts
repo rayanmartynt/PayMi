@@ -14,6 +14,11 @@ export interface User {
   role: UserRole
   createdAt: Date
   verified: boolean
+  profilePicture?: string
+  customer?: {
+    id: string
+    profilePicture?: string
+  }
 }
 
 export interface Merchant extends User {

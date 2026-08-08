@@ -9,13 +9,15 @@ import {
   History, 
   Send, 
   ArrowLeftRight, 
-  CreditCard, 
+  Wallet, 
   User, 
   Shield, 
   Bell, 
   MessageSquare, 
   HelpCircle,
-  LogOut
+  LogOut,
+  DollarSign,
+  Users
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
@@ -24,8 +26,10 @@ const menuItems = [
   { icon: Home, label: 'Dashboard', href: '/customer' },
   { icon: History, label: 'Payment History', href: '/customer/payments' },
   { icon: Send, label: 'Transfer Money', href: '/customer/transfer' },
+  { icon: DollarSign, label: 'Request Money', href: '/customer/request-money' },
+  { icon: Wallet, label: 'Add Funds', href: '/customer/add-funds' },
   { icon: ArrowLeftRight, label: 'Transfers', href: '/customer/transfers' },
-  { icon: CreditCard, label: 'Payment Methods', href: '/customer/payment-methods' },
+  { icon: Users, label: 'Friends', href: '/customer/friends' },
   { icon: User, label: 'Profile', href: '/customer/profile' },
   { icon: Shield, label: 'Security', href: '/customer/security' },
   { icon: Bell, label: 'Notifications', href: '/customer/notifications' },
@@ -67,7 +71,7 @@ export function CustomerSidebar() {
                     priority
                   />
                 </div>
-                <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                <span className="text-xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
                   PayMi
                 </span>
               </Link>

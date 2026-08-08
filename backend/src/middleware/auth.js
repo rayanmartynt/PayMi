@@ -35,6 +35,32 @@ const auth = async (req, res, next) => {
   }
 };
 
+// Middleware to check if both phone and email are verified before transactions
+const requireFullVerification = async (req, res, next) => {
+  try {
+    if (!req.user.phoneVerified) {
+      return res.status(403).json({ 
+        error: 'Phone number not verified. Please verify your phone number to perform transactions.',
+        requiresPhoneVerification: true,
+        phoneNumber: req.user.phoneNumber
+      });
+    }
+
+    if (!req.user.emailVerified) {
+      return res.status(403).json({ 
+        error: 'Email not verified. Please verify your email to perform transactions.',
+        requiresEmailVerification: true,
+        email: req.user.email
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Verification check error:', error);
+    res.status(500).json({ error: 'Verification check failed' });
+  }
+};
+
 const customerAuth = async (req, res, next) => {
   try {
     await auth(req, res, (err) => {
@@ -89,4 +115,4 @@ const adminAuth = async (req, res, next) => {
   }
 };
 
-module.exports = { auth, customerAuth, merchantAuth, adminAuth };
+module.exports = { auth, customerAuth, merchantAuth, adminAuth, requireFullVerification };

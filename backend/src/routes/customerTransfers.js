@@ -1,10 +1,106 @@
 const express = require('express');
-const { customerAuth } = require('../middleware/auth');
+const { customerAuth, requireFullVerification } = require('../middleware/auth');
 const db = require('../db/index');
 const { eq, or, and, desc } = require('drizzle-orm');
-const { customers, users, customerTransfers, adminFees } = require('../db/schema');
+const { customers, users, customerTransfers, adminFees, friendships } = require('../db/schema');
 
 const router = express.Router();
+
+// Reusable function to send money to friend
+async function sendToFriend(senderId, receiverId, amount, description) {
+  // Get sender
+  const senderResult = await db.select().from(customers).where(eq(customers.id, senderId)).limit(1);
+  const sender = senderResult[0];
+
+  if (!sender) {
+    throw new Error('Sender not found');
+  }
+
+  // Check if they are friends
+  const friendship = await db.select().from(friendships).where(
+    and(
+      eq(friendships.status, 'ACCEPTED'),
+      or(
+        and(
+          eq(friendships.requesterId, senderId),
+          eq(friendships.receiverId, receiverId)
+        ),
+        and(
+          eq(friendships.requesterId, receiverId),
+          eq(friendships.receiverId, senderId)
+        )
+      )
+    )
+  ).limit(1);
+
+  if (friendship.length === 0) {
+    throw new Error('You can only send money to friends');
+  }
+
+  // Get receiver customer
+  const receiverResult = await db.select().from(customers).where(eq(customers.id, receiverId)).limit(1);
+  const receiver = receiverResult[0];
+
+  if (!receiver) {
+    throw new Error('Receiver not found');
+  }
+
+  if (senderId === receiverId) {
+    throw new Error('Cannot transfer to yourself');
+  }
+
+  if (parseFloat(sender.balance) < amount) {
+    throw new Error('Insufficient balance');
+  }
+
+  const reference = `TRF-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  // Calculate fee (1% for friend transfers)
+  const fee = amount * 0.01;
+  const totalAmount = parseFloat(amount) + fee;
+
+  // Deduct from sender
+  await db.update(customers)
+    .set({ balance: (parseFloat(sender.balance) - totalAmount).toString() })
+    .where(eq(customers.id, senderId));
+
+  // Add to receiver
+  await db.update(customers)
+    .set({ balance: (parseFloat(receiver.balance) + parseFloat(amount)).toString() })
+    .where(eq(customers.id, receiverId));
+
+  // Add fee to admin wallet (get admin user with role ADMIN)
+  const adminResult = await db.select().from(users).where(eq(users.role, 'ADMIN')).limit(1);
+  if (adminResult[0]) {
+    await db.update(users)
+      .set({ adminBalance: (parseFloat(adminResult[0].adminBalance || 0) + fee).toString() })
+      .where(eq(users.id, adminResult[0].id));
+  }
+
+  // Create transfer record
+  const transfer = await db.insert(customerTransfers).values({
+    senderId: senderId,
+    receiverId: receiverId,
+    amount: amount.toString(),
+    fee: fee.toString(),
+    currency: 'SLE',
+    status: 'COMPLETED',
+    description: description || 'Friend transfer'
+  }).returning();
+
+  // Record admin fee as collected
+  await db.insert(adminFees).values({
+    type: 'TRANSFER_FEE',
+    amount: amount.toString(),
+    fee: fee.toString(),
+    currency: 'SLE',
+    referenceId: transfer[0].id,
+    isCollected: true,
+    collectedAt: new Date()
+  });
+
+  return transfer[0];
+}
 
 // Get customer transfers
 router.get('/', customerAuth, async (req, res) => {
@@ -26,16 +122,12 @@ router.get('/', customerAuth, async (req, res) => {
         )
       : or(eq(customerTransfers.senderId, customer.id), eq(customerTransfers.receiverId, customer.id));
 
-    const transfersResult = await db.select({
-      transfer: customerTransfers,
-      sender: { customer: customers, user: users },
-      receiver: { customer: customers, user: users }
-    })
-    .from(customerTransfers)
-    .where(conditions)
-    .orderBy(desc(customerTransfers.createdAt))
-    .limit(parseInt(limit))
-    .offset(offset);
+    const transfersResult = await db.select()
+      .from(customerTransfers)
+      .where(conditions)
+      .orderBy(desc(customerTransfers.createdAt))
+      .limit(parseInt(limit))
+      .offset(offset);
 
     // Count total
     const countResult = await db.select({ count: customerTransfers.id })
@@ -58,8 +150,109 @@ router.get('/', customerAuth, async (req, res) => {
   }
 });
 
-// Create transfer
-router.post('/', customerAuth, async (req, res) => {
+// Create transfer to friend
+router.post('/friend', customerAuth, requireFullVerification, async (req, res) => {
+  try {
+    const { friendId, amount, description } = req.body;
+    
+    const senderResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
+    const sender = senderResult[0];
+
+    if (!sender) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    // Check KYC status
+    if (!sender.kycVerified) {
+      return res.status(403).json({ error: 'KYC verification required. Please complete your identity verification to transfer funds.' });
+    }
+
+    // Check if they are friends
+    const friendship = await db.select().from(friendships).where(
+      and(
+        eq(friendships.status, 'ACCEPTED'),
+        or(
+          and(
+            eq(friendships.requesterId, sender.id),
+            eq(friendships.receiverId, friendId)
+          ),
+          and(
+            eq(friendships.requesterId, friendId),
+            eq(friendships.receiverId, sender.id)
+          )
+        )
+      )
+    ).limit(1);
+
+    if (friendship.length === 0) {
+      return res.status(403).json({ error: 'You can only send money to friends' });
+    }
+
+    // Get receiver customer
+    const receiverResult = await db.select().from(customers).where(eq(customers.id, friendId)).limit(1);
+    const receiver = receiverResult[0];
+
+    if (!receiver) {
+      return res.status(404).json({ error: 'Receiver not found' });
+    }
+
+    if (sender.id === receiver.id) {
+      return res.status(400).json({ error: 'Cannot transfer to yourself' });
+    }
+
+    if (parseFloat(sender.balance) < amount) {
+      return res.status(400).json({ error: 'Insufficient balance' });
+    }
+
+    const reference = `TRF-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Calculate fee (1% for friend transfers)
+    const fee = amount * 0.01;
+    const totalAmount = parseFloat(amount) + fee;
+
+    // Deduct from sender
+    await db.update(customers)
+      .set({ balance: (parseFloat(sender.balance) - totalAmount).toString() })
+      .where(eq(customers.id, sender.id));
+
+    // Add to receiver
+    await db.update(customers)
+      .set({ balance: (parseFloat(receiver.balance) + parseFloat(amount)).toString() })
+      .where(eq(customers.id, receiver.id));
+
+    // Create transfer record
+    const transfer = await db.insert(customerTransfers).values({
+      senderId: sender.id,
+      receiverId: receiver.id,
+      amount: amount.toString(),
+      fee: fee.toString(),
+      currency: 'SLE',
+      status: 'COMPLETED',
+      description: description || 'Friend transfer'
+    }).returning();
+
+    // Record admin fee
+    await db.insert(adminFees).values({
+      type: 'TRANSFER_FEE',
+      amount: amount.toString(),
+      fee: fee.toString(),
+      currency: 'SLE',
+      referenceId: transfer[0].id
+    });
+
+    res.json({
+      message: 'Transfer successful',
+      transfer: transfer[0],
+      newBalance: (parseFloat(sender.balance) - totalAmount).toString()
+    });
+  } catch (error) {
+    console.error('Friend transfer error:', error);
+    res.status(500).json({ error: 'Transfer failed' });
+  }
+});
+
+// Create transfer (legacy - by email)
+router.post('/', customerAuth, requireFullVerification, async (req, res) => {
   try {
     const { receiverEmail, amount, description } = req.body;
     

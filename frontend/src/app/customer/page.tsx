@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { ArrowUpRight, ArrowDownRight, TrendingUp, Wallet, Send, History, ArrowLeftRight, AlertCircle, Shield } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, TrendingUp, Wallet, Send, History, ArrowLeftRight, AlertCircle, Shield, ArrowRight } from 'lucide-react'
 import { api } from '@/lib/api'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { formatCurrency } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
+import { toast } from 'sonner'
 
 export default function CustomerDashboardPage() {
   const router = useRouter()
@@ -94,6 +95,70 @@ export default function CustomerDashboardPage() {
           <h1 className="text-3xl font-bold">Welcome back, {profile.name}</h1>
           <p className="text-muted-foreground">Manage your payments and transfers</p>
         </div>
+
+        {/* Verification Status Banner */}
+        {(!profile.emailVerified || !profile.phoneVerified) && (
+          <Card className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-amber-200 dark:border-amber-800">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-4">
+                <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-full">
+                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-amber-900 dark:text-amber-100 mb-1">
+                    Complete Your Verification
+                  </h3>
+                  <p className="text-sm text-amber-800 dark:text-amber-200 mb-3">
+                    {!profile.emailVerified && !profile.phoneVerified 
+                      ? 'You need to verify both your email and phone number to perform transactions.'
+                      : !profile.emailVerified 
+                      ? 'You need to verify your email to perform transactions.'
+                      : 'You need to verify your phone number to perform transactions.'}
+                  </p>
+                  <div className="flex gap-3">
+                    {!profile.emailVerified && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            await api.resendVerificationCode();
+                            toast.success('Verification code sent to your email');
+                          } catch (error: any) {
+                            toast.error(error.message || 'Failed to send verification code');
+                          }
+                        }}
+                        className="border-amber-300 text-amber-700 hover:bg-amber-100"
+                      >
+                        Verify Email
+                        <ArrowRight className="h-4 w-4 ml-2" />
+                      </Button>
+                    )}
+                    {!profile.phoneVerified && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            await api.sendPhoneVerification();
+                            toast.success('Verification code sent to your phone');
+                            router.push(`/auth/verify-phone?dashboard=true`);
+                          } catch (error: any) {
+                            toast.error(error.message || 'Failed to send verification code');
+                          }
+                        }}
+                        className="border-amber-300 text-amber-700 hover:bg-amber-100"
+                      >
+                        Verify Phone
+                        <ArrowRight className="h-4 w-4 ml-2" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* KYC Banner */}
         {kycStatus !== 'APPROVED' && (

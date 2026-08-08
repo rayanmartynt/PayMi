@@ -18,8 +18,6 @@ const paymentMethodIcons = {
   orange_money: '/orange-money.png',
   afrimoney: '/afrimoney.png',
   qmoney: '/qmoney.jpg',
-  visa: '/visa.jpg',
-  mastercard: '/mastercard.png',
   bank_transfer: '🏦',
 }
 

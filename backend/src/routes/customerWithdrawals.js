@@ -1,5 +1,5 @@
 const express = require('express');
-const { customerAuth } = require('../middleware/auth');
+const { customerAuth, requireFullVerification } = require('../middleware/auth');
 const db = require('../db/index');
 const { eq, desc, and } = require('drizzle-orm');
 const { customers, customerWithdrawals } = require('../db/schema');
@@ -52,7 +52,7 @@ router.get('/', customerAuth, async (req, res) => {
 });
 
 // Create withdrawal request
-router.post('/', customerAuth, async (req, res) => {
+router.post('/', customerAuth, requireFullVerification, async (req, res) => {
   try {
     const { amount, mobileMoneyProvider, mobileNumber } = req.body;
     
