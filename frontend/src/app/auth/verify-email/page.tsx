@@ -123,16 +123,21 @@ export default function VerifyEmailPage() {
   const handleResend = async () => {
     setError('')
     setResendSuccess('')
-    
-    if (!email) {
+
+    if (!email && !tempToken) {
       setShowEmailInput(true)
       return
     }
 
     setLoading(true)
-    
+
     try {
-      await api.resendVerificationCode(email)
+      // Use public endpoint if tempToken exists (registration flow)
+      if (tempToken) {
+        await api.resendVerificationCodePublic(tempToken)
+      } else {
+        await api.resendVerificationCode(email)
+      }
       setResendSuccess('New verification code sent successfully!')
       setTimeout(() => {
         setResendSuccess('')

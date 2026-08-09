@@ -13,7 +13,9 @@ const auth = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    const userResult = await db.select().from(users).where(eq(users.id, decoded.userId)).limit(1);
+    // Handle both userId and id in token payload
+    const userId = decoded.userId || decoded.id;
+    const userResult = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     const user = userResult[0];
 
     if (!user) {
@@ -28,6 +30,16 @@ const auth = async (req, res, next) => {
     user.customer = customerResult[0] || null;
 
     req.user = user;
+    
+    // Check if token is about to expire (within 5 minutes) and auto-refresh
+    const now = Math.floor(Date.now() / 1000);
+    const timeUntilExpiry = decoded.exp - now;
+    
+    if (timeUntilExpiry < 300 && timeUntilExpiry > 0) { // Less than 5 minutes remaining
+      const newToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '30m' });
+      res.setHeader('X-New-Token', newToken);
+    }
+    
     next();
   } catch (error) {
     console.error('Auth error:', error);
@@ -71,6 +83,11 @@ const customerAuth = async (req, res, next) => {
       return res.status(403).json({ error: 'Access denied. Customer only.' });
     }
 
+    if (!req.user.customer) {
+      return res.status(403).json({ error: 'Customer profile not found' });
+    }
+
+    req.customer = req.user.customer;
     next();
   } catch (error) {
     if (!res.headersSent) {
@@ -88,6 +105,12 @@ const merchantAuth = async (req, res, next) => {
     if (req.user.role !== 'MERCHANT') {
       return res.status(403).json({ error: 'Access denied. Merchant only.' });
     }
+
+    if (!req.user.merchant) {
+      return res.status(403).json({ error: 'Merchant profile not found' });
+    }
+
+    req.merchant = req.user.merchant;
 
     next();
   } catch (error) {

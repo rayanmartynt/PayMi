@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -12,9 +13,9 @@ import { formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
 
 const PROVIDERS = [
-  { id: 'ORANGE_MONEY', name: 'Orange Money', color: 'from-orange-500 to-orange-600', icon: '🍊' },
-  { id: 'QMONEY', name: 'QMoney', color: 'from-purple-500 to-purple-600', icon: '💜' },
-  { id: 'AFRI_MONEY', name: 'Afri Money', color: 'from-green-500 to-green-600', icon: '💚' },
+  { id: 'ORANGE_MONEY', name: 'Orange Money', color: 'from-orange-500 to-orange-600', icon: '/orange-money.png' },
+  { id: 'QMONEY', name: 'QMoney', color: 'from-purple-500 to-purple-600', icon: '/qmoney.jpg' },
+  { id: 'AFRI_MONEY', name: 'Afri Money', color: 'from-green-500 to-green-600', icon: '/afrimoney.png' },
 ]
 
 export default function AddFundsPage() {
@@ -182,7 +183,14 @@ export default function AddFundsPage() {
                         }`}
                       >
                         <div className="flex items-center gap-3">
-                          <span className="text-2xl">{provider.icon}</span>
+                          <div className="relative w-12 h-12 flex-shrink-0">
+                            <Image
+                              src={provider.icon}
+                              alt={provider.name}
+                              fill
+                              className="object-contain"
+                            />
+                          </div>
                           <div>
                             <p className="font-medium">{provider.name}</p>
                             <p className="text-xs text-muted-foreground">Mobile Money Service</p>
@@ -265,8 +273,13 @@ export default function AddFundsPage() {
                     <div key={funding.id} className="border rounded-lg p-4 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className={`h-10 w-10 rounded-lg bg-gradient-to-br ${PROVIDERS.find(p => p.id === funding.provider)?.color} flex items-center justify-center text-white text-lg`}>
-                            {PROVIDERS.find(p => p.id === funding.provider)?.icon}
+                          <div className="relative h-10 w-10 flex-shrink-0">
+                            <Image
+                              src={PROVIDERS.find(p => p.id === funding.provider)?.icon || ''}
+                              alt={PROVIDERS.find(p => p.id === funding.provider)?.name || 'Provider'}
+                              fill
+                              className="object-contain rounded-lg"
+                            />
                           </div>
                           <div>
                             <p className="font-medium">{PROVIDERS.find(p => p.id === funding.provider)?.name}</p>

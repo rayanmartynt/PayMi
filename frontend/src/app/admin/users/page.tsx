@@ -41,13 +41,13 @@ export default function AdminUsersPage() {
   })
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
 
-  useEffect(() => {
-    loadUsers()
-  }, [])
-
   const loadUsers = async () => {
     try {
-      const data = await api.getUsers()
+      const params: any = { page: 1, limit: 100 };
+      if (filters.role) params.role = filters.role;
+      if (filters.search) params.search = filters.search;
+      
+      const data = await api.getUsers(params);
       setUsers(Array.isArray(data) ? data : (data as any).users || [])
     } catch (error) {
       console.error('Failed to load users:', error)
@@ -55,6 +55,10 @@ export default function AdminUsersPage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    loadUsers()
+  }, [filters.role, filters.search])
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = !filters.search || 

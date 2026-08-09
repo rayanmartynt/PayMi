@@ -192,7 +192,7 @@ class ApiClient {
   async login(email: string, password: string) {
     const response = await this.request<{ token: string; refreshToken: string; user: any }>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ identifier: email, password }),
     });
     this.setToken(response.token, response.refreshToken);
     return response;
@@ -214,6 +214,13 @@ class ApiClient {
     return this.request('/api/auth/resend-verification', {
       method: 'POST',
       body: JSON.stringify(email ? { email } : {}),
+    });
+  }
+
+  async resendVerificationCodePublic(tempToken: string) {
+    return this.request('/api/auth/resend-verification-public', {
+      method: 'POST',
+      body: JSON.stringify({ tempToken }),
     });
   }
 
@@ -249,6 +256,10 @@ class ApiClient {
 
   async getContacts(onlyPayMiUsers?: boolean) {
     return this.request(`/api/contacts${onlyPayMiUsers ? '?onlyPayMiUsers=true' : ''}`);
+  }
+
+  async getPayMiUsers(search?: string) {
+    return this.request(`/api/contacts/paymi-users${search ? `?search=${search}` : ''}`);
   }
 
   async deleteContact(contactId: string) {
@@ -455,7 +466,7 @@ class ApiClient {
 
   // Wallet Funding
   async createWalletFunding(amount: number, provider: string, phoneNumber: string) {
-    return this.request('/api/wallet-funding', {
+    return this.request<{ funding: any }>('/api/wallet-funding', {
       method: 'POST',
       body: JSON.stringify({ amount, provider, phoneNumber }),
     });
@@ -463,7 +474,7 @@ class ApiClient {
 
   async getWalletFundingHistory(status?: string) {
     const query = status ? `?status=${status}` : '';
-    return this.request(`/api/wallet-funding${query}`);
+    return this.request<{ funding: any[] }>(`/api/wallet-funding${query}`);
   }
 
   async getWalletFunding(id: string) {

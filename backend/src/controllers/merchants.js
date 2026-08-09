@@ -12,7 +12,14 @@ const getMerchantProfile = async (req, res) => {
     }
 
     const userResult = await db.select().from(users).where(eq(users.id, req.user.id)).limit(1);
-    merchant.user = userResult[0];
+    const user = userResult[0];
+
+    // Flatten user verification fields into merchant response
+    merchant.emailVerified = user.emailVerified;
+    merchant.phoneVerified = user.phoneVerified;
+    merchant.phoneNumber = user.phoneNumber;
+    merchant.email = user.email;
+    merchant.user = user;
 
     res.json(merchant);
   } catch (error) {

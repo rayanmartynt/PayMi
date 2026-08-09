@@ -144,6 +144,8 @@ app.use('/api/v1', require('./routes/apiPayments'));
 // app.use('/api/api-keys', require('./routes/apiKeys'));
 // app.use('/api/notifications', require('./routes/notifications'));
 // app.use('/api/customer-kyc', require('./routes/customerKYC'));
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/customer-kyc', require('./routes/customerKYC'));
 
 // Health check
 app.get('/health', (req, res) => {

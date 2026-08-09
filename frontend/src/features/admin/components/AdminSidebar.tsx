@@ -55,8 +55,9 @@ export function AdminSidebar() {
             <Image
               src={darkMode ? "/Dark mode logo.png" : "/Light mode logo.png"}
               alt="PayMi Logo"
-              width={60}
-              height={20}
+              width={120}
+              height={40}
+              className="h-10 w-auto"
               priority
             />
             <span className="text-xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">
