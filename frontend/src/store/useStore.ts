@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import { User, Transaction, Customer, PaymentLink, Settlement, Notification, Merchant } from '@/types'
 import { api } from '@/lib/api'
 
@@ -15,7 +15,7 @@ interface AppState {
   notifications: Notification[]
   darkMode: boolean
   sidebarOpen: boolean
-  
+
   setUser: (user: User | null) => void
   setMerchant: (merchant: Merchant | null) => void
   setTransactions: (transactions: Transaction[]) => void
@@ -73,22 +73,26 @@ export const useStore = create<AppState>()(
             set({ merchant: merchant as Merchant });
           } catch (err) {
             // Merchant profile might not exist yet for new users
-            console.log('Merchant profile not available yet:', err);
             set({ merchant: null });
           }
         } else {
           set({ merchant: null });
         }
       },
-      logout: () => set({ 
-        user: null, 
-        merchant: null, 
-        isAuthenticated: false, 
-        userRole: null 
+      logout: () => set({
+        user: null,
+        merchant: null,
+        isAuthenticated: false,
+        userRole: null
       }),
     }),
     {
       name: 'PayMi-storage',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        darkMode: state.darkMode,
+        sidebarOpen: state.sidebarOpen,
+      }),
     }
   )
 )

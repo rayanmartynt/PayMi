@@ -128,16 +128,6 @@ export default function SignupPage() {
     setLoading(true)
 
     try {
-      console.log('Initiating registration with data:', {
-        name: formData.fullName,
-        verificationMethod,
-        email: formData.email,
-        phone: formData.phone,
-        accountType,
-        businessName: formData.businessName,
-        businessType: formData.businessType,
-      })
-
       // Initiate registration (send verification code)
       const response = await api.initiateRegistration({
         name: formData.fullName,
@@ -150,8 +140,6 @@ export default function SignupPage() {
 
       setTempToken(response.tempToken)
 
-      console.log('Verification code sent, redirecting to verification page')
-      
       // Redirect to appropriate verification page
       if (verificationMethod === 'email') {
         router.push(`/auth/verify-email?tempToken=${response.tempToken}&email=${encodeURIComponent(formData.email)}`)
@@ -402,6 +390,7 @@ export default function SignupPage() {
                         required
                       />
                     </div>
+                    <p className="text-xs text-muted-foreground">You can add and verify your phone number later in your dashboard</p>
                   </div>
                 )}
 
@@ -419,6 +408,7 @@ export default function SignupPage() {
                         required
                       />
                     </div>
+                    <p className="text-xs text-muted-foreground">You can add and verify your email later in your dashboard</p>
                   </div>
                 )}
 

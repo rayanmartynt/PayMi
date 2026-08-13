@@ -29,6 +29,9 @@ class ApiClient {
   }
 
   setToken(token: string, refreshToken?: string) {
+    // Clear any existing tokens first
+    this.clearToken();
+    
     this.token = token;
     if (refreshToken) {
       this.refreshToken = refreshToken;
@@ -82,7 +85,8 @@ class ApiClient {
   private async request<T>(
     endpoint: string,
     options: RequestInit = {},
-    showToast: boolean = true
+    showToast: boolean = true,
+    successMessage?: string
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     const headers: Record<string, string> = {
@@ -101,37 +105,46 @@ class ApiClient {
       });
 
       if (!response.ok) {
-        if (response.status === 401 && this.refreshToken && !this.isRefreshing) {
-          this.isRefreshing = true;
-          try {
-            const newToken = await this.refreshTokenRequest();
-            this.isRefreshing = false;
-            this.onTokenRefreshed(newToken);
-            
-            // Retry the original request with new token
-            headers['Authorization'] = `Bearer ${newToken}`;
-            const retryResponse = await fetch(url, {
-              ...options,
-              headers,
-            });
-            
-            if (!retryResponse.ok) {
-              const error = await retryResponse.json().catch(() => ({ error: 'An error occurred' }));
-              const errorMessage = error.error || error.message || 'An error occurred';
-              if (showToast) {
-                toast.error(errorMessage);
+        if (response.status === 401) {
+          if (this.refreshToken && !this.isRefreshing) {
+            this.isRefreshing = true;
+            try {
+              const newToken = await this.refreshTokenRequest();
+              this.isRefreshing = false;
+              this.onTokenRefreshed(newToken);
+              
+              // Retry the original request with new token
+              headers['Authorization'] = `Bearer ${newToken}`;
+              const retryResponse = await fetch(url, {
+                ...options,
+                headers,
+              });
+              
+              if (!retryResponse.ok) {
+                const error = await retryResponse.json().catch(() => ({ error: 'An error occurred' }));
+                const errorMessage = error.error || error.message || 'An error occurred';
+                if (showToast) {
+                  toast.error(errorMessage);
+                }
+                throw new Error(errorMessage);
               }
-              throw new Error(errorMessage);
+              
+              const data = await retryResponse.json();
+              if (showToast && options.method && options.method !== 'GET') {
+                toast.success(successMessage || this.getDefaultSuccessMessage(endpoint, options.method));
+              }
+              return data;
+            } catch (refreshError) {
+              this.isRefreshing = false;
+              this.clearToken();
+              toast.error('Session expired. Please log in again.');
+              window.location.href = '/login';
+              throw new Error('Session expired. Please log in again.');
             }
-            
-            const data = await retryResponse.json();
-            if (showToast && options.method && options.method !== 'GET') {
-              toast.success('Operation successful');
-            }
-            return data;
-          } catch (refreshError) {
-            this.isRefreshing = false;
+          } else {
+            // No refresh token available, logout immediately
             this.clearToken();
+            toast.error('Session expired. Please log in again.');
             window.location.href = '/login';
             throw new Error('Session expired. Please log in again.');
           }
@@ -139,8 +152,8 @@ class ApiClient {
 
         const error = await response.json().catch(() => ({ error: 'An error occurred' }));
         const errorMessage = error.error || error.message || 'An error occurred';
-        console.error('API Error:', error, 'Status:', response.status);
         if (showToast) {
+          console.error('API Error:', error, 'Status:', response.status);
           toast.error(errorMessage);
         }
         throw new Error(errorMessage);
@@ -148,16 +161,103 @@ class ApiClient {
 
       const data = await response.json();
       if (showToast && options.method && options.method !== 'GET') {
-        toast.success('Operation successful');
+        toast.success(successMessage || this.getDefaultSuccessMessage(endpoint, options.method));
       }
       return data;
     } catch (error: any) {
-      console.error('Fetch Error:', error);
+      if (showToast) {
+        console.error('Fetch Error:', error);
+      }
       if (showToast && !error.message) {
         toast.error('An error occurred');
       }
       throw error;
     }
+  }
+
+  private getDefaultSuccessMessage(endpoint: string, method?: string): string {
+    const methodLower = method?.toLowerCase() || 'post';
+    
+    // Auth endpoints
+    if (endpoint.includes('/auth/register')) return 'Sign up successful';
+    if (endpoint.includes('/auth/login')) return 'Login successful';
+    if (endpoint.includes('/auth/logout')) return 'Logged out successfully';
+    if (endpoint.includes('/auth/verify')) return 'Verification successful';
+    if (endpoint.includes('/auth/forgot-password')) return 'Password reset email sent';
+    if (endpoint.includes('/auth/reset-password')) return 'Password reset successful';
+    
+    // Contact endpoints
+    if (endpoint.includes('/contacts/sync')) return 'Contacts synced successfully';
+    if (endpoint.includes('/contacts/') && methodLower === 'delete') return 'Contact deleted';
+    
+    // Friendship endpoints
+    if (endpoint.includes('/friendships/request')) return 'Friend request sent';
+    if (endpoint.includes('/friendships/accept')) return 'Friend request accepted';
+    if (endpoint.includes('/friendships/reject')) return 'Friend request rejected';
+    if (endpoint.includes('/friendships/block')) return 'User blocked';
+    
+    // Chat endpoints
+    if (endpoint.includes('/chats/') && endpoint.includes('/messages') && methodLower === 'post') return 'Message sent';
+    if (endpoint.includes('/chats/') && endpoint.includes('/messages') && methodLower === 'delete') return 'Message deleted';
+    if (endpoint.includes('/chats/') && endpoint.includes('/read')) return 'Messages marked as read';
+    
+    // Transfer endpoints
+    if (endpoint.includes('/transfers/friend')) return 'Transfer sent successfully';
+    if (endpoint.includes('/transfers/') && endpoint.includes('/reverse')) return 'Transfer reversed';
+    
+    // Payment endpoints
+    if (endpoint.includes('/payments/create')) return 'Payment successful';
+    if (endpoint.includes('/payments/refund')) return 'Refund processed';
+    if (endpoint.includes('/payments/links')) return 'Payment link created';
+    
+    // Merchant endpoints
+    if (endpoint.includes('/merchants/profile') && methodLower === 'put') return 'Profile updated';
+    if (endpoint.includes('/merchants/withdrawals')) return 'Withdrawal request submitted';
+    
+    // Wallet endpoints
+    if (endpoint.includes('/wallet-funding')) return 'Wallet funding initiated';
+    
+    // KYC endpoints
+    if (endpoint.includes('/kyc/documents') || endpoint.includes('/customer-kyc/documents')) return 'Document uploaded';
+    if (endpoint.includes('/kyc/approve')) return 'KYC approved';
+    if (endpoint.includes('/kyc/reject')) return 'KYC rejected';
+    
+    // Money requests
+    if (endpoint.includes('/money-requests')) return 'Money request created';
+    if (endpoint.includes('/money-requests/') && endpoint.includes('/accept')) return 'Money request accepted';
+    if (endpoint.includes('/money-requests/') && endpoint.includes('/reject')) return 'Money request rejected';
+    if (endpoint.includes('/money-requests/') && endpoint.includes('/cancel')) return 'Money request cancelled';
+    
+    // Payment methods
+    if (endpoint.includes('/payment-methods') && methodLower === 'post') return 'Payment method added';
+    if (endpoint.includes('/payment-methods/') && methodLower === 'delete') return 'Payment method removed';
+    if (endpoint.includes('/payment-methods/') && endpoint.includes('/default')) return 'Default payment method updated';
+    
+    // Support tickets
+    if (endpoint.includes('/support-tickets')) return 'Support ticket created';
+    
+    // Disputes
+    if (endpoint.includes('/disputes')) return 'Dispute created';
+    
+    // API keys
+    if (endpoint.includes('/api-keys')) return 'API key created';
+    if (endpoint.includes('/api-keys/') && methodLower === 'delete') return 'API key deleted';
+    if (endpoint.includes('/api-keys/') && endpoint.includes('/regenerate')) return 'API key regenerated';
+    
+    // Webhooks
+    if (endpoint.includes('/webhooks')) return 'Webhook created';
+    if (endpoint.includes('/webhooks/') && methodLower === 'delete') return 'Webhook deleted';
+    if (endpoint.includes('/webhooks/') && endpoint.includes('/test')) return 'Webhook test sent';
+    
+    // Messaging settings
+    if (endpoint.includes('/messaging-settings') && methodLower === 'put') return 'Settings updated';
+    
+    // Profile updates
+    if (endpoint.includes('/profile') && methodLower === 'put') return 'Profile updated';
+    if (endpoint.includes('/profile/picture') && methodLower === 'delete') return 'Profile picture removed';
+    
+    // Default fallback
+    return 'Operation successful';
   }
 
   // Auth endpoints
@@ -193,13 +293,18 @@ class ApiClient {
     const response = await this.request<{ token: string; refreshToken: string; user: any }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ identifier: email, password }),
-    });
+    }, false);
     this.setToken(response.token, response.refreshToken);
+    toast.success('Login successful');
     return response;
   }
 
   async logout() {
-    await this.request('/api/auth/logout', { method: 'POST' });
+    const refreshToken = localStorage.getItem('refreshToken');
+    await this.request('/api/auth/logout', { 
+      method: 'POST',
+      body: JSON.stringify(refreshToken ? { refreshToken } : {})
+    });
     this.clearToken();
   }
 
@@ -269,10 +374,10 @@ class ApiClient {
   }
 
   // Friendships API
-  async sendFriendRequest(contactId: string) {
+  async sendFriendRequest(contactId?: string, customerId?: string) {
     return this.request('/api/friendships/request', {
       method: 'POST',
-      body: JSON.stringify({ contactId }),
+      body: JSON.stringify({ contactId, customerId }),
     });
   }
 
@@ -285,6 +390,12 @@ class ApiClient {
   async rejectFriendRequest(friendshipId: string) {
     return this.request(`/api/friendships/reject/${friendshipId}`, {
       method: 'POST',
+    });
+  }
+
+  async cancelFriendRequest(friendshipId: string) {
+    return this.request(`/api/friendships/request/${friendshipId}`, {
+      method: 'DELETE',
     });
   }
 
@@ -315,7 +426,7 @@ class ApiClient {
     return this.request(`/api/chats/${chatId}/messages`, {
       method: 'POST',
       body: JSON.stringify({ content }),
-    });
+    }, false);
   }
 
   async getMessages(chatId: string, limit?: number, offset?: number) {
@@ -326,6 +437,70 @@ class ApiClient {
     return this.request(`/api/chats/${chatId}/read`, {
       method: 'POST',
     });
+  }
+
+  async getUserStatus(userId: string) {
+    return this.request(`/api/chats/status/${userId}`);
+  }
+
+  async getBatchUserStatus(userIds: string[]) {
+    return this.request('/api/chats/status/batch', {
+      method: 'POST',
+      body: JSON.stringify({ userIds }),
+    });
+  }
+
+  async getMessagingSettings() {
+    return this.request('/api/messaging-settings');
+  }
+
+  async updateMessagingSettings(settings: {
+    readReceiptsEnabled?: boolean;
+    onlineStatusEnabled?: boolean;
+    typingIndicatorsEnabled?: boolean;
+  }) {
+    return this.request('/api/messaging-settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  }
+
+  async editMessage(chatId: string, messageId: string, content: string) {
+    return this.request(`/api/chats/${chatId}/messages/${messageId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    });
+  }
+
+  async deleteMessage(chatId: string, messageId: string, deleteForEveryone: boolean = false) {
+    return this.request(`/api/chats/${chatId}/messages/${messageId}?deleteForEveryone=${deleteForEveryone}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async addReaction(chatId: string, messageId: string, emoji: string) {
+    return this.request(`/api/chats/${chatId}/messages/${messageId}/reactions`, {
+      method: 'POST',
+      body: JSON.stringify({ emoji }),
+    }, false);
+  }
+
+  async getReactions(chatId: string, messageId: string) {
+    return this.request(`/api/chats/${chatId}/messages/${messageId}/reactions`);
+  }
+
+  async deleteChat(chatId: string) {
+    return this.request(`/api/chats/${chatId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getSupportChat() {
+    return this.request('/api/chats/support');
+  }
+
+  async getPaymentConversation(transactionId: string) {
+    return this.request(`/api/chats/payment/${transactionId}`);
   }
 
   // P2P Transfers API
@@ -615,7 +790,7 @@ class ApiClient {
     const params: any = { page, limit };
     if (filters) Object.assign(params, filters);
     const query = new URLSearchParams(params).toString();
-    return this.request(`/api/transactions${query ? `?${query}` : ''}`, {}, false);
+    return this.request(`/api/transactions/merchant${query ? `?${query}` : ''}`, {}, false);
   }
 
   async getAllTransactions(page: number = 1, limit: number = 100, filters?: any) {
@@ -634,7 +809,7 @@ class ApiClient {
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
     const query = new URLSearchParams(params).toString();
-    return this.request(`/api/transactions/analytics${query ? `?${query}` : ''}`, {}, false);
+    return this.request(`/api/analytics/overview${query ? `?${query}` : ''}`, {}, false);
   }
 
   // Merchant endpoints
@@ -684,7 +859,7 @@ class ApiClient {
 
   // KYC endpoints
   async uploadKYCDocument(formData: FormData) {
-    const url = `${this.baseUrl}/api/kyc/documents`;
+    const url = `${this.baseUrl}/api/kyc/merchant`;
     const headers: Record<string, string> = {};
 
     if (this.token) {
@@ -711,7 +886,7 @@ class ApiClient {
   }
 
   async getKYCDocuments() {
-    return this.request('/api/kyc/documents');
+    return this.request('/api/kyc/merchant');
   }
 
   async getPendingKYC() {
@@ -795,6 +970,12 @@ class ApiClient {
     return this.request('/api/customers/profile', {
       method: 'PUT',
       body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCustomerProfilePicture() {
+    return this.request('/api/customers/profile/picture', {
+      method: 'DELETE',
     });
   }
 
@@ -945,7 +1126,7 @@ class ApiClient {
 
   async getPaymentLinks(params?: { page?: number; limit?: number; status?: string }) {
     const query = new URLSearchParams(params as any).toString();
-    return this.request(`/api/payments/links${query ? `?${query}` : ''}`);
+    return this.request(`/api/payments/links${query ? `?${query}` : ''}`, {}, false);
   }
 
   // Notifications endpoints

@@ -21,7 +21,10 @@ export default function DashboardLayout({
     if (!loading && !isAuthenticated) {
       router.replace('/login')
     }
-  }, [loading, isAuthenticated, router])
+    if (!loading && isAuthenticated && user?.role !== 'MERCHANT') {
+      router.replace('/customer')
+    }
+  }, [loading, isAuthenticated, user?.role, router])
 
   if (loading) {
     return (
@@ -36,11 +39,11 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-screen bg-background flex overflow-hidden">
       <Sidebar />
-      <div className={cn('transition-all duration-300', sidebarOpen ? 'lg:ml-64' : 'lg:ml-0')}>
+      <div className="flex-1 flex flex-col overflow-hidden">
         <DashboardHeader />
-        <main className="p-6">{children}</main>
+        <main className="flex-1 overflow-auto p-4 lg:p-6">{children}</main>
       </div>
     </div>
   )

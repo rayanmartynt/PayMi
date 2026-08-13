@@ -28,7 +28,7 @@ export default function CustomerTransfersPage() {
       const params: any = {}
       if (statusFilter) params.status = statusFilter
       
-      const response = await api.getCustomerTransfers(params)
+      const response = await api.getCustomerTransfers(params) as any
       setTransfers(response.transfers || [])
     } catch (err: any) {
       setError(err.message || 'Failed to load transfers')

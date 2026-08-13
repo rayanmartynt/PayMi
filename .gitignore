@@ -14,4 +14,12 @@ backend/uploads/*
 *.log
 .DS_Store
 .idea/
-notes
+
+# Supabase
+backend/supabase/
+
+# Drizzle ORM metadata
+backend/drizzle/meta/
+
+# TypeScript build cache
+frontend/tsconfig.tsbuildinfo

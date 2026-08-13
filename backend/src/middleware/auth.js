@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../db/index');
 const { eq } = require('drizzle-orm');
 const { users, merchants, customers } = require('../db/schema');
+const { logError } = require('../utils/logger');
 
 const auth = async (req, res, next) => {
   try {
@@ -42,7 +43,7 @@ const auth = async (req, res, next) => {
     
     next();
   } catch (error) {
-    console.error('Auth error:', error);
+    logError('AuthMiddleware', error, { path: req.path });
     res.status(401).json({ error: 'Invalid token' });
   }
 };
@@ -68,7 +69,7 @@ const requireFullVerification = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('Verification check error:', error);
+    logError('VerificationMiddleware', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Verification check failed' });
   }
 };

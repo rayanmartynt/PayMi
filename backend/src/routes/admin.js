@@ -188,7 +188,9 @@ router.get('/users', adminAuth, async (req, res) => {
     let conditions = [];
     if (role) conditions.push(eq(users.role, role));
     if (search) {
-      conditions.push(sql`${users.name} ILIKE ${`%${search}%`} OR ${users.email} ILIKE ${`%${search}%`}`);
+      // Sanitize search input to prevent SQL injection
+      const sanitizedSearch = search.replace(/[%_\\]/g, '\\$&');
+      conditions.push(sql`${users.name} ILIKE ${`%${sanitizedSearch}%`} OR ${users.email} ILIKE ${`%${sanitizedSearch}%`}`);
     }
     
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;

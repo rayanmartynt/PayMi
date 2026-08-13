@@ -2,7 +2,7 @@ const { pgTable, uuid, varchar, text, boolean, timestamp, decimal, integer, inde
 
 const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
-  email: varchar('email', { length: 255 }).notNull().unique(),
+  email: varchar('email', { length: 255 }),
   password: varchar('password', { length: 255 }).notNull(),
   name: varchar('name', { length: 255 }).notNull(),
   role: varchar('role', { length: 50 }).notNull(),
@@ -15,9 +15,13 @@ const users = pgTable('users', {
   verificationCodeExpires: timestamp('verification_code_expires'),
   phoneVerificationCode: varchar('phone_verification_code', { length: 10 }),
   phoneVerificationCodeExpires: timestamp('phone_verification_code_expires'),
+  encryptionKey: varchar('encryption_key', { length: 255 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, (table) => ({ emailIdx: index('users_email_idx').on(table.email) }));
+}, (table) => ({ 
+  emailIdx: index('users_email_idx').on(table.email),
+  phoneNumberIdx: index('users_phone_number_idx').on(table.phoneNumber)
+}));
 
 const merchants = pgTable('merchants', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -583,13 +587,16 @@ const friendships = pgTable('friendships', {
 const chats = pgTable('chats', {
   id: uuid('id').defaultRandom().primaryKey(),
   participant1Id: uuid('participant_1_id').notNull(),
-  participant2Id: uuid('participant_2_id').notNull(),
+  participant2Id: uuid('participant_2_id'),
+  type: varchar('type', { length: 20 }).default('customer').notNull(), // customer, payment, support
+  transactionId: uuid('transaction_id'), // For payment conversations
   lastMessageAt: timestamp('last_message_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
   participant1IdIdx: index('chats_participant_1_id_idx').on(table.participant1Id),
   participant2IdIdx: index('chats_participant_2_id_idx').on(table.participant2Id),
+  typeIdx: index('chats_type_idx').on(table.type),
   uniqueChat: index('chats_unique_idx').on(table.participant1Id, table.participant2Id),
 }));
 
@@ -600,13 +607,33 @@ const messages = pgTable('messages', {
   senderId: uuid('sender_id').notNull(),
   encryptedContent: text('encrypted_content').notNull(),
   iv: varchar('iv', { length: 255 }).notNull(),
+  status: varchar('status', { length: 20 }).default('sent').notNull(), // sent, delivered, read
   read: boolean('read').default(false).notNull(),
+  edited: boolean('edited').default(false).notNull(),
+  deletedAt: timestamp('deleted_at'),
+  deletedBy: text('deleted_by'), // JSON array of customer IDs who deleted this message
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
   chatIdIdx: index('messages_chat_id_idx').on(table.chatId),
   senderIdIdx: index('messages_sender_id_idx').on(table.senderId),
   readIdx: index('messages_read_idx').on(table.read),
   createdAtIdx: index('messages_created_at_idx').on(table.createdAt),
+}));
+
+// Messaging settings table
+const messagingSettings = pgTable('messaging_settings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  customerId: uuid('customer_id').notNull(),
+  notificationsEnabled: boolean('notifications_enabled').default(true).notNull(),
+  emailAlertsEnabled: boolean('email_alerts_enabled').default(true).notNull(),
+  soundEnabled: boolean('sound_enabled').default(true).notNull(),
+  readReceiptsEnabled: boolean('read_receipts_enabled').default(true).notNull(),
+  onlineStatusEnabled: boolean('online_status_enabled').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  customerIdIdx: index('messaging_settings_customer_id_idx').on(table.customerId),
 }));
 
 const moneyRequests = pgTable('money_requests', {
@@ -686,6 +713,7 @@ module.exports = {
   friendships,
   chats,
   messages,
+  messagingSettings,
   moneyRequests,
   walletFunding,
 };

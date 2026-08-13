@@ -57,10 +57,10 @@ export default function AdminFeesPage() {
         api.getAdminWithdrawals()
       ])
       
-      setBalance(balanceData.balance || '0')
-      setFees(feesData.fees || [])
-      setBankAccounts(bankAccountsData || [])
-      setWithdrawals(withdrawalsData.withdrawals || [])
+      setBalance((balanceData as any).balance || '0')
+      setFees((feesData as any).fees || [])
+      setBankAccounts((bankAccountsData as any[]) || [])
+      setWithdrawals((withdrawalsData as any).withdrawals || [])
     } catch (err: any) {
       setError(err.message || 'Failed to load data')
     } finally {

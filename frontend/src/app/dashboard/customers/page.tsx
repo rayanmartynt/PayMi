@@ -24,9 +24,15 @@ export default function CustomersPage() {
 
   useEffect(() => {
     async function load() {
-      const [cust, txn] = await Promise.all([api.getCustomers(), api.getTransactions()]);
-      setCustomers(cust as any[]);
-      setTransactions(txn as any[]);
+      try {
+        const [cust, txn] = await Promise.all([api.getCustomers(), api.getTransactions()]);
+        setCustomers(cust as any[]);
+        setTransactions(txn as any[]);
+      } catch (error) {
+        console.error('Failed to load data:', error);
+        setCustomers([]);
+        setTransactions([]);
+      }
     }
     load();
   }, []);

@@ -177,7 +177,7 @@ function WithdrawModal({
 
     setLoading(true)
     try {
-      await api.requestWithdrawal({
+      await api.createCustomerWithdrawal({
         amount: parseFloat(amount),
         mobileMoneyProvider,
         mobileNumber

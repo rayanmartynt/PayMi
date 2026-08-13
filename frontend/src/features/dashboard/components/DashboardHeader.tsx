@@ -2,12 +2,22 @@ import { Bell, Search, Menu, Moon, Sun } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useStore } from '@/store/useStore'
+import { useAuth } from '@/features/auth/AuthContext'
 import { useState } from 'react';
 import Image from 'next/image'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export function DashboardHeader() {
-  const { sidebarOpen, setSidebarOpen, darkMode, toggleDarkMode, user } = useStore()
+  const { sidebarOpen, setSidebarOpen, darkMode, toggleDarkMode } = useStore()
+  const { user } = useAuth()
   const [unreadCount, setUnreadCount] = useState(0);
+
+  const getProfilePictureUrl = (url: string | undefined) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+    return `${API_URL}${url}`;
+  };
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background px-6">
@@ -19,18 +29,8 @@ export function DashboardHeader() {
       >
         <Menu className="h-5 w-5" />
       </Button>
-
-      <div className="flex items-center gap-3">
-        <Image
-          src={darkMode ? "/Dark mode logo.png" : "/Light mode logo.png"}
-          alt="PayMi Logo"
-          width={60}
-          height={20}
-          priority
-        />
-      </div>
-
-      <div className="flex-1">
+      
+      <div className="flex-1 hidden md:block">
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -56,7 +56,7 @@ export function DashboardHeader() {
         <div className="flex items-center gap-3">
           {user?.profilePicture || user?.customer?.profilePicture ? (
             <img
-              src={user.profilePicture || user.customer?.profilePicture}
+              src={getProfilePictureUrl(user.profilePicture || user.customer?.profilePicture)}
               alt={user.name}
               className="h-8 w-8 rounded-full object-cover"
               onError={(e) => {
@@ -67,10 +67,10 @@ export function DashboardHeader() {
             />
           ) : null}
           <div className={`h-8 w-8 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white text-sm font-medium ${user?.profilePicture || user?.customer?.profilePicture ? 'hidden' : ''}`}>
-            {user?.name?.charAt(0) || user?.email?.charAt(0) || 'U'}
+            {user?.name?.charAt(0) || user?.email?.charAt(0)}
           </div>
           <div className="hidden md:block">
-            <p className="text-sm font-medium">{user?.name || 'User'}</p>
+            <p className="text-sm font-medium">{user?.name}</p>
             <p className="text-xs text-muted-foreground">{user?.email}</p>
           </div>
         </div>

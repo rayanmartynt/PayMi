@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { TransactionsTable } from '@/components/dashboard/TransactionsTable'
+import { TransactionsTable } from '@/features/dashboard/components/TransactionsTable'
 import { AdvancedFilter, FilterConfig } from '@/components/ui/AdvancedFilter'
 import { ExportButton } from '@/components/ui/ExportButton'
 import { formatCurrency, formatDateTime } from '@/lib/utils'
@@ -31,9 +31,10 @@ export default function TransactionsPage() {
   const loadTransactions = async () => {
     try {
       const data = await api.getTransactions()
-      setTransactions((data as any).transactions || [])
+      setTransactions(Array.isArray(data) ? data : (data as any).transactions || [])
     } catch (error) {
-      console.error('Failed to load transactions:', error)
+      // Error already handled by API client with showToast=false
+      setTransactions([])
     } finally {
       setLoading(false)
     }

@@ -9,10 +9,10 @@ const router = express.Router();
 // Send friend request
 router.post('/request', customerAuth, async (req, res) => {
   try {
-    const { contactId } = req.body;
+    const { contactId, customerId } = req.body;
 
-    if (!contactId) {
-      return res.status(400).json({ error: 'Contact ID is required' });
+    if (!contactId && !customerId) {
+      return res.status(400).json({ error: 'Contact ID or Customer ID is required' });
     }
 
     const customerResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
@@ -22,19 +22,28 @@ router.post('/request', customerAuth, async (req, res) => {
       return res.status(404).json({ error: 'Customer not found' });
     }
 
-    // Get the contact to find the matched customer
-    const contactResult = await db.select().from(contacts).where(eq(contacts.id, contactId)).limit(1);
-    const contact = contactResult[0];
+    let receiverCustomerId;
 
-    if (!contact) {
-      return res.status(404).json({ error: 'Contact not found' });
+    // If customerId is provided directly (from All PayMi Users view)
+    if (customerId) {
+      receiverCustomerId = customerId;
+    } else {
+      // If contactId is provided (from synced contacts view)
+      const contactResult = await db.select().from(contacts).where(eq(contacts.id, contactId)).limit(1);
+      const contact = contactResult[0];
+
+      if (!contact) {
+        return res.status(404).json({ error: 'Contact not found' });
+      }
+
+      if (!contact.isPayMiUser || !contact.matchedCustomerId) {
+        return res.status(400).json({ error: 'This contact is not a PayMi user' });
+      }
+
+      receiverCustomerId = contact.matchedCustomerId;
     }
 
-    if (!contact.isPayMiUser || !contact.matchedCustomerId) {
-      return res.status(400).json({ error: 'This contact is not a PayMi user' });
-    }
-
-    if (contact.matchedCustomerId === sender.id) {
+    if (receiverCustomerId === sender.id) {
       return res.status(400).json({ error: 'Cannot send friend request to yourself' });
     }
 
@@ -43,10 +52,10 @@ router.post('/request', customerAuth, async (req, res) => {
       or(
         and(
           eq(friendships.requesterId, sender.id),
-          eq(friendships.receiverId, contact.matchedCustomerId)
+          eq(friendships.receiverId, receiverCustomerId)
         ),
         and(
-          eq(friendships.requesterId, contact.matchedCustomerId),
+          eq(friendships.requesterId, receiverCustomerId),
           eq(friendships.receiverId, sender.id)
         )
       )
@@ -59,9 +68,15 @@ router.post('/request', customerAuth, async (req, res) => {
     // Create friend request
     const friendshipResult = await db.insert(friendships).values({
       requesterId: sender.id,
-      receiverId: contact.matchedCustomerId,
+      receiverId: receiverCustomerId,
       status: 'PENDING'
     }).returning();
+
+    console.log('Friend request created:', {
+      requesterId: sender.id,
+      receiverId: receiverCustomerId,
+      friendship: friendshipResult[0]
+    });
 
     res.json({
       message: 'Friend request sent successfully',
@@ -159,6 +174,43 @@ router.post('/reject/:id', customerAuth, async (req, res) => {
   }
 });
 
+// Cancel friend request (DELETE)
+router.delete('/request/:id', customerAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const customerResult = await db.select().from(customers).where(eq(customers.userId, req.user.id)).limit(1);
+    const customer = customerResult[0];
+
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const friendshipResult = await db.select().from(friendships).where(eq(friendships.id, id)).limit(1);
+    const friendship = friendshipResult[0];
+
+    if (!friendship) {
+      return res.status(404).json({ error: 'Friend request not found' });
+    }
+
+    if (friendship.requesterId !== customer.id) {
+      return res.status(403).json({ error: 'Access denied. You can only cancel your own requests.' });
+    }
+
+    if (friendship.status !== 'PENDING') {
+      return res.status(400).json({ error: 'Can only cancel pending requests' });
+    }
+
+    // Delete the friendship
+    await db.delete(friendships).where(eq(friendships.id, id));
+
+    res.json({ message: 'Friend request cancelled successfully' });
+  } catch (error) {
+    console.error('Cancel friend request error:', error);
+    res.status(500).json({ error: 'Failed to cancel friend request' });
+  }
+});
+
 // Get friend requests (received)
 router.get('/requests', customerAuth, async (req, res) => {
   try {
@@ -168,6 +220,8 @@ router.get('/requests', customerAuth, async (req, res) => {
     if (!customer) {
       return res.status(404).json({ error: 'Customer not found' });
     }
+
+    console.log('Getting friend requests for customer:', customer.id);
 
     const requests = await db.select({
       friendship: friendships,
@@ -184,6 +238,8 @@ router.get('/requests', customerAuth, async (req, res) => {
       eq(friendships.status, 'PENDING')
     ))
     .orderBy(desc(friendships.createdAt));
+
+    console.log('Friend requests found:', requests.length);
 
     res.json(requests);
   } catch (error) {

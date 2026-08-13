@@ -119,7 +119,6 @@ export default function SettingsPage() {
         businessType: formData.businessType,
         businessAddress: formData.businessAddress,
         phoneNumber: formData.phone,
-        webhookUrl: formData.webhookUrl
       })
       await loadMerchantProfile()
     } catch (error) {

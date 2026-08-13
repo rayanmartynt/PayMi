@@ -46,7 +46,7 @@ export default function APIKeysPage() {
 
   const handleCreateKey = async (name: string) => {
     try {
-      const newKey = await api.createApiKey(name)
+      const newKey = await api.createApiKey(name) as APIKeyData
       setApiKeys([...apiKeys, newKey])
       setIsCreateModalOpen(false)
     } catch (error) {
@@ -57,9 +57,9 @@ export default function APIKeysPage() {
 
   const handleRotateKey = async (keyId: string) => {
     try {
-      const updatedKey = await api.regenerateApiKey(keyId)
+      const updatedKey = await api.regenerateApiKeySecret(keyId) as Partial<APIKeyData>
       setApiKeys(apiKeys.map(key =>
-        key.id === keyId ? updatedKey : key
+        key.id === keyId ? { ...key, ...updatedKey } : key
       ))
     } catch (error) {
       // Error is already handled by API client toast notification
@@ -69,7 +69,7 @@ export default function APIKeysPage() {
 
   const handleRevokeKey = async (keyId: string) => {
     try {
-      await api.revokeApiKey(keyId)
+      await api.updateApiKey(keyId, undefined, undefined, false)
       setApiKeys(apiKeys.map(key =>
         key.id === keyId ? { ...key, isActive: false } : key
       ))

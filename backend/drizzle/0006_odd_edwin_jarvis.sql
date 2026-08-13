@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "encryption_key" varchar(255);

@@ -92,7 +92,7 @@ export default function CustomerDashboardPage() {
     <ProtectedRoute>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Welcome back, {profile.name}</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Welcome back, {profile.name}</h1>
           <p className="text-muted-foreground">Manage your payments and transfers</p>
         </div>
 
@@ -194,13 +194,13 @@ export default function CustomerDashboardPage() {
             <CardTitle className="text-white">Available Balance</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold mb-2">{formatCurrency(profile.balance)}</div>
+            <div className="text-3xl sm:text-4xl font-bold mb-2">{formatCurrency(profile.balance)}</div>
             <p className="text-blue-100">SLE - Sierra Leone Leone</p>
           </CardContent>
         </Card>
 
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Spent</CardTitle>
@@ -238,7 +238,7 @@ export default function CustomerDashboardPage() {
         {/* Quick Actions */}
         <div>
           <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {quickActions.map((action) => {
               const Icon = action.icon
               return (

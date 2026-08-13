@@ -9,7 +9,8 @@ const { customers, transactions, users } = require('../db/schema');
 const {
   getCustomerProfile,
   updateCustomerProfile,
-  uploadCustomerProfilePicture
+  uploadCustomerProfilePicture,
+  deleteCustomerProfilePicture
 } = require('../controllers/customers');
 
 const router = express.Router();
@@ -57,6 +58,9 @@ router.put('/profile', customerAuth, updateCustomerProfile);
 
 // Upload customer profile picture
 router.post('/profile/picture', customerAuth, upload.single('profilePicture'), uploadCustomerProfilePicture);
+
+// Delete customer profile picture
+router.delete('/profile/picture', customerAuth, deleteCustomerProfilePicture);
 
 // Get customer analytics
 router.get('/analytics', customerAuth, async (req, res) => {

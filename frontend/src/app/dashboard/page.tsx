@@ -1,107 +1,124 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { ArrowUpRight, ArrowDownRight, TrendingUp, Wallet, CheckCircle, XCircle, Clock, AlertTriangle, ArrowRight } from 'lucide-react'
 import { api } from '@/lib/api';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import { formatCurrency } from '@/lib/utils'
 import { RevenueChart } from '@/features/dashboard/components/RevenueChart'
 import { TransactionsTable } from '@/features/dashboard/components/TransactionsTable'
-import { motion, useMotionValue, useTransform, useSpring } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { useSocket } from '@/contexts/SocketContext'
 
 function StatCard({ children, className }: { children: React.ReactNode; className?: string }) {
-  const cardRef = useRef<HTMLDivElement>(null)
-  const x = useMotionValue(0)
-  const y = useMotionValue(0)
-
-  const mouseX = useSpring(x, { stiffness: 500, damping: 100 })
-  const mouseY = useSpring(y, { stiffness: 500, damping: 100 })
-
-  const rotateX = useTransform(mouseY, [-0.5, 0.5], [8, -8])
-  const rotateY = useTransform(mouseX, [-0.5, 0.5], [-8, 8])
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!cardRef.current) return
-    const rect = cardRef.current.getBoundingClientRect()
-    const width = rect.width
-    const height = rect.height
-    const mouseXVal = (e.clientX - rect.left) / width - 0.5
-    const mouseYVal = (e.clientY - rect.top) / height - 0.5
-    x.set(mouseXVal)
-    y.set(mouseYVal)
-  }
-
-  const handleMouseLeave = () => {
-    x.set(0)
-    y.set(0)
-  }
-
   return (
-    <motion.div
-      ref={cardRef}
-      style={{
-        perspective: 1000,
-        rotateX,
-        rotateY,
-      }}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      className={className}
-    >
-      <Card className="hover:shadow-xl transition-all duration-300 transform-style-3d">
+    <div className={className}>
+      <Card className="hover:shadow-xl transition-all duration-300">
         {children}
       </Card>
-    </motion.div>
+    </div>
   )
 }
 
 export default function DashboardPage() {
   const router = useRouter()
+  const { socket, connected } = useSocket()
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [onboardingStep, setOnboardingStep] = useState<string>('COMPLETED');
 
-  useEffect(() => {
-    async function fetchData() {
+  const fetchData = async () => {
+    try {
+      // Fetch merchant profile
+      const merchant = await api.getMerchantProfile() as any;
+      setOnboardingStep(merchant.onboardingStep || 'COMPLETED');
+      
+      // Fetch analytics
+      let analytics: any = {
+        dailyRevenue: [],
+        revenue: 0,
+        transactions: 0
+      };
       try {
-        // Fetch merchant profile
-        const merchant = await api.getMerchantProfile();
-        setOnboardingStep(merchant.onboardingStep || 'COMPLETED');
-        
-        // Fetch analytics
-        let analytics: any = {
-          dailyRevenue: [],
-          revenue: 0,
-          transactions: 0
-        };
-        try {
-          analytics = await api.getAnalytics();
-        } catch (err: any) {
-          console.log('No analytics data yet:', err);
-        }
-
-        // Fetch transactions
-        let transactions: any[] = [];
-        try {
-          const transactionsData: any = await api.getTransactions();
-          transactions = transactionsData.transactions || [];
-        } catch (err: any) {
-          console.log('No transactions yet:', err);
-        }
-
-        setData({ analytics, transactions, merchant });
+        analytics = await api.getAnalytics();
       } catch (err: any) {
-        console.error('Failed to fetch dashboard data', err);
-        setError(err.message || 'Failed to load dashboard data');
+        // No analytics data yet
       }
+
+      // Fetch transactions
+      let transactions: any[] = [];
+      try {
+        const transactionsData: any = await api.getTransactions();
+        transactions = Array.isArray(transactionsData) ? transactionsData : transactionsData.transactions || [];
+      } catch (err: any) {
+        // No transactions yet
+      }
+
+      setData({ analytics, transactions, merchant });
+    } catch (err: any) {
+      console.error('Failed to fetch dashboard data', err);
+      setError(err.message || 'Failed to load dashboard data');
     }
+  };
+
+  useEffect(() => {
     fetchData();
+
+    // Set up polling for analytics (every 30 seconds)
+    const analyticsInterval = setInterval(() => {
+      fetchData();
+    }, 30000);
+
+    return () => clearInterval(analyticsInterval);
   }, []);
+
+  // Real-time socket listeners
+  useEffect(() => {
+    if (!socket || !connected) return;
+
+    const handleNewPayment = (paymentData: any) => {
+      toast.success('New payment received!');
+      fetchData();
+    };
+
+    const handlePaymentUpdate = (data: any) => {
+      fetchData();
+    };
+
+    const handleKYCStatusUpdate = (data: any) => {
+      toast.info(`KYC Status: ${data.status}`);
+      fetchData();
+    };
+
+    const handleSettlement = (data: any) => {
+      toast.info('Settlement update received');
+      fetchData();
+    };
+
+    const handleInvoiceUpdate = (data: any) => {
+      if (data.type === 'paid') {
+        toast.success('Invoice paid!');
+      }
+      fetchData();
+    };
+
+    socket.on('new_payment', handleNewPayment);
+    socket.on('payment', handlePaymentUpdate);
+    socket.on('kyc_status_update', handleKYCStatusUpdate);
+    socket.on('settlement', handleSettlement);
+    socket.on('invoice', handleInvoiceUpdate);
+
+    return () => {
+      socket.off('new_payment', handleNewPayment);
+      socket.off('payment', handlePaymentUpdate);
+      socket.off('kyc_status_update', handleKYCStatusUpdate);
+      socket.off('settlement', handleSettlement);
+      socket.off('invoice', handleInvoiceUpdate);
+    };
+  }, [socket, connected]);
 
   if (error) return <div className="text-red-500">Error loading data: {error}</div>;
   if (!data) return <div className="flex items-center justify-center h-64"><span className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></span> Loading...</div>;
@@ -119,8 +136,7 @@ export default function DashboardPage() {
   const successRate = totalPayments ? (successfulPayments / totalPayments) * 100 : 0;
 
   return (
-    <ProtectedRoute>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Verification Status Banner */}
         {(!merchant.emailVerified || !merchant.phoneVerified) && (
           <div className="bg-gradient-to-r from-amber-500 to-orange-600 text-white p-6 rounded-xl shadow-lg">
@@ -317,6 +333,5 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-    </ProtectedRoute>
   );
 }
