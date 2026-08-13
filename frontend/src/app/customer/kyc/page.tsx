@@ -78,7 +78,7 @@ export default function CustomerKYCPage() {
 
   const fetchDocuments = async () => {
     try {
-      const docs = await api.getCustomerKYCDocuments()
+      const docs = await api.getCustomerKYCDocuments() as any[]
       setUploadedDocuments(docs)
     } catch (error) {
       console.error('Failed to fetch documents:', error)

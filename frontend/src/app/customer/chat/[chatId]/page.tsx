@@ -4,31 +4,89 @@ import { useEffect, useState, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Send, ArrowLeft, RefreshCw, Lock } from 'lucide-react'
+import { Send, ArrowLeft, RefreshCw, Lock, MoreVertical, Trash2, Edit2, Check, CheckCheck } from 'lucide-react'
 import { api } from '@/lib/api'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { toast } from 'sonner'
 import { useRouter, useParams } from 'next/navigation'
 import { formatCurrency } from '@/lib/utils'
+import { useAuth } from '@/features/auth/AuthContext'
+import { useSocket } from '@/contexts/SocketContext'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/DropdownMenu'
 
 export default function ChatPage() {
   const router = useRouter()
   const params = useParams()
   const chatId = params.chatId as string
+  const { user } = useAuth()
+  const socket = useSocket()
 
   const [messages, setMessages] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [newMessage, setNewMessage] = useState('')
   const [chatInfo, setChatInfo] = useState<any>(null)
+  const [editingMessage, setEditingMessage] = useState<string | null>(null)
+  const [editContent, setEditContent] = useState('')
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     loadMessages()
-    // Poll for new messages every 5 seconds
-    const interval = setInterval(loadMessages, 5000)
-    return () => clearInterval(interval)
   }, [chatId])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setOpenDropdownId(null)
+    }
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [])
+
+  // Real-time socket event listeners
+  useEffect(() => {
+    const socketInstance = socket?.socket
+    if (!socketInstance || !user?.id) return
+
+    socketInstance.emit('join', user.id)
+
+    const handleNewMessage = (data: any) => {
+      if (data.chatId === chatId) {
+        setMessages(prev => [...prev, {
+          id: data.messageId,
+          content: data.content,
+          senderId: data.senderId,
+          createdAt: data.createdAt,
+          read: false,
+          status: 'delivered'
+        }])
+      }
+    }
+
+    const handleMessageDelivered = (data: any) => {
+      if (data.chatId === chatId) {
+        setMessages(prev => prev.map(m => 
+          m.id === data.messageId ? { ...m, status: 'delivered' } : m
+        ))
+      }
+    }
+
+    socketInstance.on('new_message', handleNewMessage)
+    socketInstance.on('message_delivered', handleMessageDelivered)
+
+    return () => {
+      if (socketInstance) {
+        socketInstance.off('new_message', handleNewMessage)
+        socketInstance.off('message_delivered', handleMessageDelivered)
+      }
+    }
+  }, [socket, user?.id, chatId])
 
   useEffect(() => {
     scrollToBottom()
@@ -36,12 +94,13 @@ export default function ChatPage() {
 
   const loadMessages = async () => {
     try {
+      setLoading(true)
       const [messagesData, chatsData] = await Promise.all([
         api.getMessages(chatId),
         api.getChats()
       ])
       
-      const currentChat = chatsData.find((c: any) => c.chat.id === chatId)
+      const currentChat = (chatsData as any[]).find((c: any) => c.chat.id === chatId)
       setChatInfo(currentChat)
       setMessages(messagesData as any[])
     } catch (error: any) {
@@ -62,7 +121,7 @@ export default function ChatPage() {
 
     setSending(true)
     try {
-      const result = await api.sendMessage(chatId, newMessage)
+      const result = await api.sendMessage(chatId, newMessage) as any
       setMessages([...messages, result.message])
       setNewMessage('')
       
@@ -80,6 +139,63 @@ export default function ChatPage() {
       const friendId = chatInfo.otherParticipant.id
       const friendName = chatInfo.otherParticipant.name
       router.push(`/customer/transfer?friendId=${friendId}&friendName=${encodeURIComponent(friendName)}`)
+    }
+  }
+
+  const handleDeleteMessage = async (messageId: string, deleteForEveryone: boolean = false) => {
+    try {
+      await api.deleteMessage(chatId, messageId, deleteForEveryone)
+      if (deleteForEveryone) {
+        setMessages(messages.filter(m => m.id !== messageId))
+        toast.success('Message deleted for everyone')
+      } else {
+        setMessages(messages.map(m => 
+          m.id === messageId ? { ...m, deletedForMe: true } : m
+        ))
+        toast.success('Message deleted for you')
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete message')
+    }
+  }
+
+  const handleEditMessage = async (messageId: string) => {
+    if (!editContent.trim()) return
+    try {
+      await api.editMessage(chatId, messageId, editContent)
+      setMessages(messages.map(m => 
+        m.id === messageId 
+          ? { ...m, content: editContent, edited: true }
+          : m
+      ))
+      setEditingMessage(null)
+      setEditContent('')
+      toast.success('Message updated')
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to edit message')
+    }
+  }
+
+  const startEditing = (message: any) => {
+    setEditingMessage(message.id)
+    setEditContent(message.content)
+  }
+
+  const cancelEditing = () => {
+    setEditingMessage(null)
+    setEditContent('')
+  }
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'read':
+        return <CheckCheck className="h-3 w-3 text-blue-500" />
+      case 'delivered':
+        return <CheckCheck className="h-3 w-3" />
+      case 'sent':
+        return <Check className="h-3 w-3" />
+      default:
+        return null
     }
   }
 
@@ -134,25 +250,83 @@ export default function ChatPage() {
                 </p>
               </div>
             ) : (
-              messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.senderId === chatInfo?.otherParticipant.id ? 'justify-start' : 'justify-end'}`}
-                >
+              messages.map((message) => {
+                const isOwnMessage = message.senderId === user?.id
+                return (
                   <div
-                    className={`max-w-[70%] rounded-lg p-3 ${
-                      message.senderId === chatInfo?.otherParticipant.id
-                        ? 'bg-muted'
-                        : 'bg-primary text-primary-foreground'
-                    }`}
+                    key={message.id}
+                    className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
                   >
-                    <p className="text-sm">{message.content}</p>
-                    <p className="text-xs mt-1 opacity-70">
-                      {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
+                    <div
+                      className={`max-w-[70%] rounded-lg p-3 ${
+                        isOwnMessage
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted'
+                      }`}
+                    >
+                      {editingMessage === message.id ? (
+                        <div className="space-y-2">
+                          <Input
+                            value={editContent}
+                            onChange={(e) => setEditContent(e.target.value)}
+                            className="bg-background text-foreground"
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={() => handleEditMessage(message.id)}>
+                              <Check className="h-3 w-3 mr-1" />
+                              Save
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={cancelEditing}>
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {message.deletedForMe ? (
+                            <p className="text-sm italic opacity-50">This message was deleted</p>
+                          ) : (
+                            <p className="text-sm">{message.content}</p>
+                          )}
+                          <div className="flex items-center justify-between mt-1">
+                            <p className="text-xs opacity-70 flex items-center gap-1">
+                              {message.edited && <span className="italic">(edited)</span>}
+                              {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              {isOwnMessage && getStatusIcon(message.status)}
+                              {isOwnMessage && (
+                                <DropdownMenu open={openDropdownId === message.id} onOpenChange={(open) => setOpenDropdownId(open ? message.id : null)}>
+                                  <DropdownMenuTrigger asChild={true}>
+                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-50 hover:opacity-100">
+                                      <MoreVertical className="h-3 w-3" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent>
+                                    <DropdownMenuItem onClick={() => startEditing(message)}>
+                                      <Edit2 className="h-3 w-3 mr-2" />
+                                      Edit
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleDeleteMessage(message.id, false)}>
+                                      <Trash2 className="h-3 w-3 mr-2" />
+                                      Delete for me
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleDeleteMessage(message.id, true)} className="text-destructive">
+                                      <Trash2 className="h-3 w-3 mr-2" />
+                                      Delete for everyone
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
+                )
+              })
             )}
             <div ref={messagesEndRef} />
           </CardContent>

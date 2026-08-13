@@ -69,7 +69,7 @@ export default function ReportsPage() {
         return acc
       }, {})
 
-      const totalAmount: number = Object.values(paymentMethodsMap).reduce((sum: any, item: any) => sum + item.amount, 0)
+      const totalAmount: number = Object.values(paymentMethodsMap).reduce((sum: number, item: any) => sum + item.amount, 0)
       const paymentMethods = Object.values(paymentMethodsMap).map((item: any) => ({
         ...item,
         percentage: totalAmount > 0 ? ((item.amount / totalAmount) * 100).toFixed(1) : 0
@@ -129,7 +129,7 @@ export default function ReportsPage() {
   }
 
   const handleExport = (format: 'csv' | 'pdf') => {
-    console.log(`Exporting ${reportType} report as ${format}`)
+    // Export report
   }
 
   if (loading) {

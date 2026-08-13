@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { fileTypeFromBuffer } = require('file-type');
+const fileType = require('file-type');
 const { customerAuth } = require('../middleware/auth');
 const db = require('../db/index');
 const { eq, desc } = require('drizzle-orm');
@@ -85,10 +85,10 @@ router.post('/documents', customerAuth, upload.single('document'), async (req, r
     // Validate file content
     const filePath = path.join(__dirname, '../../uploads', req.file.filename);
     const buffer = fs.readFileSync(filePath);
-    const fileType = await fileTypeFromBuffer(buffer);
+    const type = await fileType.fromBuffer(buffer);
     const allowedMimeTypes = ['image/jpeg', 'image/png', 'application/pdf'];
     
-    if (!fileType || !allowedMimeTypes.includes(fileType.mime)) {
+    if (!type || !allowedMimeTypes.includes(type.mime)) {
       fs.unlinkSync(filePath);
       return res.status(400).json({ error: 'Invalid file type. Only JPEG, PNG, and PDF files are allowed' });
     }

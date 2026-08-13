@@ -408,6 +408,31 @@ const walletFunding = pgTable('wallet_funding', {
   createdAtIdx: index('wallet_funding_created_at_idx').on(table.createdAt),
 }));
 
+const messagingSettings = pgTable('messaging_settings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  customerId: uuid('customer_id').notNull().references(() => customers.id),
+  readReceiptsEnabled: boolean('read_receipts_enabled').default(true).notNull(),
+  onlineStatusEnabled: boolean('online_status_enabled').default(true).notNull(),
+  typingIndicatorsEnabled: boolean('typing_indicators_enabled').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  customerIdIdx: index('messaging_settings_customer_id_idx').on(table.customerId),
+}));
+
+// Message reactions table
+const messageReactions = pgTable('message_reactions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  messageId: uuid('message_id').notNull().references(() => messages.id),
+  customerId: uuid('customer_id').notNull().references(() => customers.id),
+  emoji: varchar('emoji', { length: 50 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  messageIdIdx: index('message_reactions_message_id_idx').on(table.messageId),
+  customerIdIdx: index('message_reactions_customer_id_idx').on(table.customerId),
+  uniqueReaction: index('message_reactions_unique_idx').on(table.messageId, table.customerId, table.emoji),
+}));
+
 module.exports = {
   users,
   merchants,
@@ -434,4 +459,6 @@ module.exports = {
   messages,
   moneyRequests,
   walletFunding,
+  messagingSettings,
+  messageReactions,
 };

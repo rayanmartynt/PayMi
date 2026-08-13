@@ -4,6 +4,7 @@ const db = require('../db/index');
 const { eq, desc } = require('drizzle-orm');
 const { merchants, apiKeys } = require('../db/schema');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 
 const router = express.Router();
 
@@ -41,11 +42,12 @@ router.post('/', merchantAuth, async (req, res) => {
 
     const key = `pk_${crypto.randomBytes(32).toString('hex')}`;
     const secret = `sk_${crypto.randomBytes(32).toString('hex')}`;
+    const hashedSecret = await bcrypt.hash(secret, 10);
 
     const apiKeyResult = await db.insert(apiKeys).values({
       merchantId: merchant.id,
       key,
-      secret,
+      secret: hashedSecret,
       name: name || 'Default API Key',
       permissions: permissions || JSON.stringify(['read', 'write']),
       isActive: true
@@ -53,7 +55,11 @@ router.post('/', merchantAuth, async (req, res) => {
     
     const apiKey = apiKeyResult[0];
 
-    res.json(apiKey);
+    // Return the plaintext secret only once (this is the only time the merchant will see it)
+    res.json({
+      ...apiKey,
+      secret // Return plaintext secret for display to user
+    });
   } catch (error) {
     console.error('Create API key error:', error);
     res.status(500).json({ error: 'Failed to create API key' });
@@ -79,15 +85,20 @@ router.post('/:id/regenerate', merchantAuth, async (req, res) => {
 
     const newKey = `pk_${crypto.randomBytes(32).toString('hex')}`;
     const newSecret = `sk_${crypto.randomBytes(32).toString('hex')}`;
+    const hashedSecret = await bcrypt.hash(newSecret, 10);
 
     const updatedKeyResult = await db.update(apiKeys)
-      .set({ key: newKey, secret: newSecret })
+      .set({ key: newKey, secret: hashedSecret })
       .where(eq(apiKeys.id, req.params.id))
       .returning();
     
     const updatedKey = updatedKeyResult[0];
 
-    res.json(updatedKey);
+    // Return the plaintext secret only once
+    res.json({
+      ...updatedKey,
+      secret: newSecret
+    });
   } catch (error) {
     console.error('Regenerate API key error:', error);
     res.status(500).json({ error: 'Failed to regenerate API key' });

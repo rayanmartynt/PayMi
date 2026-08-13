@@ -27,7 +27,7 @@ export default function CustomerPaymentsPage() {
       const params: any = {}
       if (statusFilter) params.status = statusFilter
       
-      const response = await api.getCustomerPayments(params)
+      const response = await api.getCustomerPayments(params) as any
       setPayments(response.payments || [])
     } catch (err: any) {
       setError(err.message || 'Failed to load payments')

@@ -7,6 +7,9 @@ const path = require('path');
 const db = require('./db/index');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const { connectRedis, setUserOnline, setUserOffline, getUserStatus } = require('./db/redis');
+const { setSocketIO } = require('./socket');
+const { logError, logInfo } = require('./utils/logger');
 // const rabbitMQ = require('./services/rabbitmq');
 // const paymentProcessor = require('./services/paymentProcessor');
 // const notificationService = require('./services/notificationService');
@@ -22,13 +25,31 @@ const io = new Server(httpServer, {
   }
 });
 
+setSocketIO(io);
+
 const PORT = process.env.PORT || 5000;
 
-// Security headers
+// Security headers with CSRF protection
 app.use(helmet({
   contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
 }));
+
+// CSRF protection using SameSite cookies
+app.use((req, res, next) => {
+  res.cookie('sameSiteCookie', '1', {
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 86400000 // 24 hours
+  });
+  next();
+});
 
 // CORS configuration - restrict to localhost:3000 in development
 const corsOptions = {
@@ -48,6 +69,10 @@ const createRateLimiter = (windowMs, max, message) => {
     message: { error: message },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => {
+      // Skip rate limiting for localhost development
+      return process.env.NODE_ENV === 'development' && req.ip === '::1' || req.ip === '127.0.0.1'
+    }
   });
 };
 
@@ -77,17 +102,100 @@ app.use(require('./middleware/sandbox').sandboxMiddleware);
 app.use(require('./middleware/i18n').i18nMiddleware);
 
 // Socket.io connection handling
+const socketIdToUserId = new Map();
+const jwt = require('jsonwebtoken');
+const { eq } = require('drizzle-orm');
+const { users } = require('./db/schema');
+
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  logInfo('SocketConnection', 'Client connected', { socketId: socket.id });
 
-  socket.on('join', (userId) => {
-    socket.join(userId);
-    console.log(`User ${userId} joined`);
+  socket.on('join', async (data) => {
+    try {
+      logInfo('SocketJoin', 'Join event received', { 
+        socketId: socket.id, 
+        hasData: !!data, 
+        dataType: typeof data,
+        dataKeys: data ? Object.keys(data) : []
+      });
+      
+      const { token, userId } = data;
+      
+      logInfo('SocketJoin', 'Extracted data', { 
+        socketId: socket.id, 
+        hasToken: !!token, 
+        hasUserId: !!userId,
+        tokenLength: token ? token.length : 0,
+        userId: userId || 'missing'
+      });
+      
+      if (!token || !userId) {
+        logInfo('SocketJoin', 'Missing token or userId', { socketId: socket.id });
+        socket.emit('error', { message: 'Token and userId are required' });
+        // Don't disconnect - let the socket stay connected for other features
+        return;
+      }
+
+      // Verify JWT token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const tokenUserId = decoded.userId || decoded.id;
+      
+      // Ensure the token's userId matches the requested userId
+      if (tokenUserId !== userId) {
+        logInfo('SocketJoin', 'Token userId mismatch', { socketId: socket.id, tokenUserId, requestedUserId: userId });
+        socket.emit('error', { message: 'Token does not match requested userId' });
+        return;
+      }
+
+      // Verify user exists in database
+      const userResult = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (!userResult[0]) {
+        logInfo('SocketJoin', 'Invalid user', { socketId: socket.id, userId });
+        socket.emit('error', { message: 'Invalid user' });
+        return;
+      }
+
+      socket.join(userId);
+      socketIdToUserId.set(socket.id, userId);
+      await setUserOnline(userId, socket.id);
+      logInfo('SocketJoin', 'User joined room', { userId });
+      
+      // Broadcast status change to friends
+      io.emit('user_status_change', {
+        userId,
+        online: true,
+        lastSeen: Date.now()
+      });
+    } catch (error) {
+      logError('SocketJoin', error, { socketId: socket.id });
+      socket.emit('error', { message: 'Authentication failed' });
+      socket.disconnect();
+    }
   });
 
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+  socket.on('disconnect', async () => {
+    logInfo('SocketDisconnect', 'Client disconnected', { socketId: socket.id });
+    const userId = socketIdToUserId.get(socket.id);
+    if (userId) {
+      await setUserOffline(userId);
+      socketIdToUserId.delete(socket.id);
+      
+      // Broadcast status change to friends
+      io.emit('user_status_change', {
+        userId,
+        online: false,
+        lastSeen: Date.now()
+      });
+    }
   });
+});
+
+// Connect to Redis
+connectRedis().then(() => {
+  logInfo('Redis', 'Connection established');
+}).catch((err) => {
+  logError('Redis', err);
+  logInfo('Redis', 'Continuing without Redis');
 });
 
 // Make io available globally
@@ -111,6 +219,7 @@ app.use('/api/admin/fees', require('./routes/adminFees'));
 app.use('/api/contacts', require('./routes/contacts'));
 app.use('/api/friendships', require('./routes/friendships'));
 app.use('/api/chats', require('./routes/chats'));
+app.use('/api/messaging-settings', require('./routes/messagingSettings'));
 app.use('/api/merchant-payments', require('./routes/merchantPayments'));
 app.use('/api/money-requests', require('./routes/moneyRequests'));
 app.use('/api/wallet-funding', require('./routes/walletFunding'));
@@ -123,6 +232,7 @@ app.use('/api/v1', require('./routes/apiPayments'));
 // app.use('/api/customers/support-tickets', require('./routes/customerSupportTickets'));
 // app.use('/api/sandbox', require('./routes/sandbox'));
 // app.use('/api/analytics', require('./routes/analytics'));
+app.use('/api/analytics', require('./routes/analytics'));
 // app.use('/api/subscriptions', require('./routes/subscriptions'));
 // app.use('/api/split-payments', require('./routes/splitPayments'));
 // app.use('/api/escrow', require('./routes/escrow'));
@@ -138,8 +248,11 @@ app.use('/api/v1', require('./routes/apiPayments'));
 // app.use('/api/bulk-payments', require('./routes/bulkPayments'));
 // app.use('/api/chatbot', require('./routes/chatbot'));
 // app.use('/api/transactions', require('./routes/transactions'));
+app.use('/api/transactions', require('./routes/transactions'));
 // app.use('/api/payments', require('./routes/payments'));
+app.use('/api/payments', require('./routes/payments'));
 // app.use('/api/kyc', require('./routes/kyc'));
+app.use('/api/kyc', require('./routes/kyc'));
 // app.use('/api/webhooks', require('./routes/webhooks'));
 // app.use('/api/api-keys', require('./routes/apiKeys'));
 // app.use('/api/notifications', require('./routes/notifications'));

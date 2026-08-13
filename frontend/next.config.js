@@ -4,7 +4,6 @@ const nextConfig = {
   images: {
     domains: ['localhost'],
   },
-  outputFileTracingRoot: process.cwd(),
   transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
 }
 

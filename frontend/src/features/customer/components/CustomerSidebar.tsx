@@ -33,7 +33,6 @@ const menuItems = [
   { icon: User, label: 'Profile', href: '/customer/profile' },
   { icon: Shield, label: 'Security', href: '/customer/security' },
   { icon: Bell, label: 'Notifications', href: '/customer/notifications' },
-  { icon: MessageSquare, label: 'Support', href: '/customer/support' },
   { icon: HelpCircle, label: 'FAQ', href: '/customer/faq' },
 ]
 

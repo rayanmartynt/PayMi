@@ -34,7 +34,7 @@ export default function RequestMoneyPage() {
 
   const loadFriends = async () => {
     try {
-      const data = await api.getFriends()
+      const data = await api.getFriends() as any[]
       setFriends(data)
     } catch (err: any) {
       console.error('Failed to load friends:', err)
@@ -43,7 +43,7 @@ export default function RequestMoneyPage() {
 
   const loadReceivedRequests = async () => {
     try {
-      const data = await api.getReceivedMoneyRequests('PENDING')
+      const data = await api.getReceivedMoneyRequests('PENDING') as any[]
       setReceivedRequests(data)
     } catch (err: any) {
       console.error('Failed to load received requests:', err)
@@ -52,7 +52,7 @@ export default function RequestMoneyPage() {
 
   const loadSentRequests = async () => {
     try {
-      const data = await api.getSentMoneyRequests()
+      const data = await api.getSentMoneyRequests() as any[]
       setSentRequests(data)
     } catch (err: any) {
       console.error('Failed to load sent requests:', err)

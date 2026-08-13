@@ -1,6 +1,7 @@
 'use client'
 
 import { useStore } from '@/store/useStore'
+import { useAuth } from '@/features/auth/AuthContext'
 import { Bell, Menu, Search, Moon, Sun, X, Check } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -9,12 +10,20 @@ import { useState } from 'react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export function CustomerHeader() {
-  const { toggleSidebar, sidebarOpen, notifications, user, darkMode, toggleDarkMode, setNotifications } = useStore()
+  const { toggleSidebar, sidebarOpen, notifications, darkMode, toggleDarkMode, setNotifications } = useStore()
+  const { user } = useAuth()
   const unreadCount = notifications.filter(n => !n.read).length
   const [showNotifications, setShowNotifications] = useState(false)
   const [loadingNotifications, setLoadingNotifications] = useState(false)
+
+  const getProfilePictureUrl = (url: string | undefined) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+    return `${API_URL}${url}`;
+  };
 
   const handleNotificationClick = async () => {
     if (!showNotifications) {
@@ -74,7 +83,7 @@ export function CustomerHeader() {
           <Menu className="h-5 w-5" />
         </Button>
 
-        <div className="flex-1">
+        <div className="flex-1 hidden md:block">
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -186,7 +195,7 @@ export function CustomerHeader() {
           <div className="flex items-center gap-3">
             {user?.profilePicture || user?.customer?.profilePicture ? (
               <img
-                src={user.profilePicture || user.customer?.profilePicture}
+                src={getProfilePictureUrl(user.profilePicture || user.customer?.profilePicture)}
                 alt={user.name}
                 className="h-8 w-8 rounded-full object-cover"
                 onError={(e) => {
@@ -197,10 +206,10 @@ export function CustomerHeader() {
               />
             ) : null}
             <div className={`h-8 w-8 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white text-sm font-medium ${user?.profilePicture || user?.customer?.profilePicture ? 'hidden' : ''}`}>
-              {user?.name?.charAt(0) || user?.email?.charAt(0) || 'U'}
+              {user?.name?.charAt(0) || user?.email?.charAt(0)}
             </div>
             <div className="hidden md:block">
-              <p className="text-sm font-medium">{user?.name || 'User'}</p>
+              <p className="text-sm font-medium">{user?.name}</p>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
           </div>

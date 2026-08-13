@@ -27,7 +27,7 @@ export default function CustomerPaymentMethodsPage() {
   const loadPaymentMethods = async () => {
     try {
       setLoading(true)
-      const data = await api.getPaymentMethods()
+      const data = await api.getPaymentMethods() as any[]
       setPaymentMethods(data || [])
     } catch (err: any) {
       setError(err.message || 'Failed to load payment methods')

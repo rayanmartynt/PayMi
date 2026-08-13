@@ -4,8 +4,16 @@ import { Input } from '@/components/ui/Input'
 import { useStore } from '@/store/useStore'
 import Image from 'next/image'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export function AdminHeader() {
   const { sidebarOpen, setSidebarOpen, darkMode, toggleDarkMode, user } = useStore()
+
+  const getProfilePictureUrl = (url: string | undefined) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+    return `${API_URL}${url}`;
+  };
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background px-6">
@@ -57,7 +65,7 @@ export function AdminHeader() {
         <div className="flex items-center gap-3">
           {user?.profilePicture || user?.customer?.profilePicture ? (
             <img
-              src={user.profilePicture || user.customer?.profilePicture}
+              src={getProfilePictureUrl(user.profilePicture || user.customer?.profilePicture)}
               alt={user.name}
               className="h-8 w-8 rounded-full object-cover"
               onError={(e) => {

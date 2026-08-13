@@ -42,7 +42,7 @@ export default function CustomerLayout({
       <CustomerSidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <CustomerHeader />
-        <main className="flex-1 overflow-auto p-6">{children}</main>
+        <main className="flex-1 overflow-auto p-4 lg:p-6">{children}</main>
       </div>
     </div>
   )

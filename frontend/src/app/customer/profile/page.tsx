@@ -8,10 +8,8 @@ import { User, Mail, Phone, MapPin, Save, Camera, Upload } from 'lucide-react'
 import { api } from '@/lib/api'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { toast } from 'sonner'
-import { useStore } from '@/store/useStore'
 
 export default function CustomerProfilePage() {
-  const { setUser } = useStore()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingPicture, setUploadingPicture] = useState(false)
@@ -20,7 +18,8 @@ export default function CustomerProfilePage() {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
-    address: ''
+    address: '',
+    email: ''
   })
   const [profile, setProfile] = useState<any>(null)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
@@ -37,7 +36,8 @@ export default function CustomerProfilePage() {
       setFormData({
         name: (data as any).name || '',
         phone: (data as any).phone || '',
-        address: (data as any).address || ''
+        address: (data as any).address || '',
+        email: (data as any).user?.email || ''
       })
       if ((data as any).profilePicture) {
         setPreviewImage(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}${(data as any).profilePicture}`)
@@ -84,24 +84,25 @@ export default function CustomerProfilePage() {
 
       toast.success('Profile picture updated successfully')
       setPreviewImage(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}${data.profilePicture}`)
-      
-      // Update user in store with new profile picture
-      const updatedProfile = await api.getCustomerProfile() as any
-      const fullProfilePictureUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}${updatedProfile.profilePicture}`
-      setUser({
-        ...updatedProfile.user,
-        profilePicture: fullProfilePictureUrl,
-        customer: {
-          id: updatedProfile.id,
-          profilePicture: fullProfilePictureUrl
-        }
-      })
-      
+
       loadProfile()
     } catch (error: any) {
       toast.error(error.message || 'Failed to upload profile picture')
     } finally {
       setUploadingPicture(false)
+    }
+  }
+
+  const handleDeletePicture = async () => {
+    if (!confirm('Are you sure you want to delete your profile picture?')) return
+
+    try {
+      await api.deleteCustomerProfilePicture()
+      toast.success('Profile picture deleted successfully')
+      setPreviewImage(null)
+      loadProfile()
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete profile picture')
     }
   }
 
@@ -181,6 +182,16 @@ export default function CustomerProfilePage() {
                 <p className="text-sm text-muted-foreground mt-1">
                   JPEG, PNG, or WebP (max 5MB)
                 </p>
+                {previewImage && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDeletePicture}
+                    className="mt-3 text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    Delete Photo
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>
@@ -205,14 +216,18 @@ export default function CustomerProfilePage() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Email (Read-only)</label>
+                <label className="text-sm font-medium">
+                  {profile?.user?.email ? 'Email (Read-only)' : 'Email (Add email to your account)'}
+                </label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     type="email"
-                    value={profile?.user?.email || ''}
-                    disabled
-                    className="pl-10 bg-muted"
+                    placeholder="your@email.com"
+                    value={profile?.user?.email ? profile.user.email : formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    disabled={!!profile?.user?.email || saving}
+                    className="pl-10"
                   />
                 </div>
               </div>

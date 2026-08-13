@@ -1,22 +1,25 @@
 const crypto = require('crypto');
 
-// Generate a unique encryption key for a user
+// Generate a unique encryption key for a user using ECDH
 function generateUserKey() {
-  return crypto.randomBytes(32).toString('hex');
+  const ecdh = crypto.createECDH('secp256k1');
+  ecdh.generateKeys();
+  return {
+    privateKey: ecdh.getPrivateKey('hex'),
+    publicKey: ecdh.getPublicKey('hex')
+  };
 }
 
-// Derive a shared key from two user keys (for end-to-end encryption)
-function deriveSharedKey(userKey1, userKey2) {
-  // Simple XOR-based key derivation (in production, use proper ECDH)
-  const key1 = Buffer.from(userKey1, 'hex');
-  const key2 = Buffer.from(userKey2, 'hex');
-  const sharedKey = Buffer.alloc(32);
-  
-  for (let i = 0; i < 32; i++) {
-    sharedKey[i] = key1[i] ^ key2[i];
+// Derive a shared key from two user keys using ECDH
+function deriveSharedKey(privateKeyHex, publicKeyHex) {
+  try {
+    const ecdh = crypto.createECDH('secp256k1');
+    ecdh.setPrivateKey(privateKeyHex, 'hex');
+    const sharedKey = ecdh.computeSecret(publicKeyHex, 'hex');
+    return sharedKey;
+  } catch (error) {
+    throw new Error('Failed to derive shared key: ' + error.message);
   }
-  
-  return sharedKey.toString('hex');
 }
 
 // Encrypt message with shared key

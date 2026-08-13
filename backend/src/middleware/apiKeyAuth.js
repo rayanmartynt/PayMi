@@ -1,6 +1,8 @@
 const db = require('../db/index');
 const { eq } = require('drizzle-orm');
 const { apiKeys, merchants } = require('../db/schema');
+const bcrypt = require('bcryptjs');
+const { logError } = require('../utils/logger');
 
 // Middleware to authenticate requests using API key
 async function apiKeyAuth(req, res, next) {
@@ -20,8 +22,9 @@ async function apiKeyAuth(req, res, next) {
       return res.status(401).json({ error: 'Invalid API key' });
     }
 
-    // Verify secret
-    if (apiKeyData.secret !== apiSecret) {
+    // Verify secret using bcrypt comparison
+    const isValid = await bcrypt.compare(apiSecret, apiKeyData.secret);
+    if (!isValid) {
       return res.status(401).json({ error: 'Invalid API secret' });
     }
 
@@ -58,7 +61,7 @@ async function apiKeyAuth(req, res, next) {
 
     next();
   } catch (error) {
-    console.error('API key auth error:', error);
+    logError('APIKeyAuth', error, { path: req.path });
     res.status(500).json({ error: 'Authentication failed' });
   }
 }

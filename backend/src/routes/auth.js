@@ -87,6 +87,13 @@ router.post('/initiate-registration',
 
     // Check if phone number is already registered
     if (verificationMethod === 'phone') {
+      // Validate phone number format first
+      if (!smsService.isValidPhoneNumber(phoneNumber)) {
+        return res.status(400).json({ 
+          error: 'Invalid phone number format. Please use Sierra Leone format (e.g., 076123456 or +23276123456)' 
+        });
+      }
+      
       const formattedPhone = smsService.formatPhoneNumber(phoneNumber);
       const existingPhoneResult = await db.select().from(users).where(eq(users.phoneNumber, formattedPhone)).limit(1);
       if (existingPhoneResult[0]) {
@@ -139,7 +146,7 @@ router.post('/initiate-registration',
 router.post('/register', 
   authLimiter,
   [
-    body('email').isEmail().normalizeEmail().withMessage('Invalid email address'),
+    body('email').optional().isEmail().normalizeEmail().withMessage('Invalid email address'),
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
     body('name').trim().notEmpty().withMessage('Name is required'),
     body('role').optional().isIn(['MERCHANT', 'CUSTOMER', 'ADMIN']).withMessage('Invalid role'),
@@ -154,20 +161,35 @@ router.post('/register',
 
     const { email, password, name, role, phoneNumber } = req.body;
 
+    // Require at least email or phone
+    if (!email && !phoneNumber) {
+      return res.status(400).json({ error: 'Email or phone number is required' });
+    }
+
     // Validate password strength
     const passwordError = validatePassword(password);
     if (passwordError) {
       return res.status(400).json({ error: passwordError });
     }
 
-    const existingUserResult = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    const existingUser = existingUserResult[0];
-    if (existingUser) {
-      return res.status(400).json({ error: 'Email already registered' });
+    // Check if email is already registered (only if email is provided)
+    if (email) {
+      const existingUserResult = await db.select().from(users).where(eq(users.email, email)).limit(1);
+      const existingUser = existingUserResult[0];
+      if (existingUser) {
+        return res.status(400).json({ error: 'Email already registered' });
+      }
     }
 
-    // Check if phone number is already registered
+    // Check if phone number is already registered (only if phone is provided)
     if (phoneNumber) {
+      // Validate phone number format first
+      if (!smsService.isValidPhoneNumber(phoneNumber)) {
+        return res.status(400).json({ 
+          error: 'Invalid phone number format. Please use Sierra Leone format (e.g., 076123456 or +23276123456)' 
+        });
+      }
+      
       const formattedPhone = smsService.formatPhoneNumber(phoneNumber);
       const existingPhoneResult = await db.select().from(users).where(eq(users.phoneNumber, formattedPhone)).limit(1);
       if (existingPhoneResult[0]) {
@@ -182,13 +204,13 @@ router.post('/register',
     const verificationCodeExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
     const userResult = await db.insert(users).values({
-      email,
+      email: email || null,
       password: hashedPassword,
       name,
       role: role || 'CUSTOMER',
       phoneNumber: phoneNumber ? smsService.formatPhoneNumber(phoneNumber) : null,
-      emailVerified: false,
-      phoneVerified: false,
+      emailVerified: !!email, // Auto-verify if email provided during registration
+      phoneVerified: !!phoneNumber, // Auto-verify if phone provided during registration
       verificationCode,
       verificationCodeExpires
     }).returning();
@@ -212,22 +234,27 @@ router.post('/register',
       });
     }
 
-    // Send verification email
-    try {
-      await sendVerificationEmail(email, verificationCode);
-    } catch (emailError) {
-      console.error('Failed to send verification email:', emailError);
-      // Continue with registration even if email fails
+    // Send verification email only if email was provided
+    if (email) {
+      try {
+        await sendVerificationEmail(email, verificationCode);
+      } catch (emailError) {
+        console.error('Failed to send verification email:', emailError);
+        // Continue with registration even if email fails
+      }
     }
 
     res.status(201).json({
-      message: 'User registered successfully. Please check your email for verification code.',
+      message: email 
+        ? 'User registered successfully. Please check your email for verification code.'
+        : 'User registered successfully. Please add and verify your email in your dashboard.',
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
         role: user.role,
-        emailVerified: false
+        emailVerified: user.emailVerified,
+        phoneVerified: user.phoneVerified
       }
     });
 
@@ -426,6 +453,13 @@ router.post('/resend-verification',
       return res.status(404).json({ error: 'User not found' });
     }
 
+    // Check if user has an email address
+    if (!userEmail) {
+      return res.status(400).json({ 
+        error: 'No email address associated with your account. Please add an email address to verify.' 
+      });
+    }
+
     if (user.emailVerified) {
       return res.status(400).json({ error: 'Email already verified' });
     }
@@ -499,7 +533,7 @@ router.post('/complete-registration-phone',
       password: pendingData.password,
       role: pendingData.role,
       phoneNumber: pendingData.phoneNumber,
-      email: pendingData.email || `user_${Date.now()}@temp.com`, // Placeholder email if phone signup
+      email: pendingData.email || null, // Null email if phone signup
       phoneVerified: true,
       emailVerified: false, // Email must be verified later in dashboard
     }).returning();
@@ -553,7 +587,7 @@ router.post('/complete-registration-phone',
     );
 
     // Send welcome email if email is provided
-    if (user.email && !user.email.includes('@temp.com')) {
+    if (user.email) {
       try {
         const emailService = require('../services/email');
         await emailService.sendWelcomeEmail(user.email, user.name);
@@ -1101,7 +1135,7 @@ router.get('/profile', auth, async (req, res) => {
     req.user.merchant = merchantResult[0] || null;
     req.user.customer = customerResult[0] || null;
 
-    res.json({
+    const profileData = {
       id: req.user.id,
       email: req.user.email,
       name: req.user.name,
@@ -1110,7 +1144,8 @@ router.get('/profile', auth, async (req, res) => {
       twoFactorEnabled: req.user.twoFactorEnabled,
       merchant: req.user.merchant,
       customer: req.user.customer
-    });
+    };
+    res.json(profileData);
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ error: 'Failed to get profile' });

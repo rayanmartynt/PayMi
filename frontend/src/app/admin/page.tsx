@@ -51,7 +51,7 @@ export default function AdminPage() {
       ])
       
       if (statsData) {
-        setStats(statsData)
+        setStats(statsData as any)
       }
       
       // Filter only merchants from users

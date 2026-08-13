@@ -29,7 +29,8 @@ export default function PaymentsPage() {
       const links = await api.getPaymentLinks();
       setPaymentLinks(links as any[]);
     } catch (error) {
-      console.error('Failed to load payment links:', error);
+      // Error already handled by API client with showToast=false
+      setPaymentLinks([]);
     }
   };
 
@@ -48,12 +49,12 @@ export default function PaymentsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Payments</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Payments</h1>
           <p className="text-muted-foreground">Create payment links and QR codes</p>
         </div>
-        <Button onClick={() => setIsCreateModalOpen(true)} variant="gradient">
+        <Button onClick={() => setIsCreateModalOpen(true)} variant="gradient" className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Create Payment Link
         </Button>

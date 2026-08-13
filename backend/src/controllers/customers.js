@@ -30,7 +30,7 @@ const getCustomerProfile = async (req, res) => {
 
 const updateCustomerProfile = async (req, res) => {
   try {
-    const { name, phone, address } = req.body;
+    const { name, phone, address, email } = req.body;
 
     const customerResult = await db.update(customers)
       .set({ name, phone, address })
@@ -44,8 +44,36 @@ const updateCustomerProfile = async (req, res) => {
       .set({ name })
       .where(eq(users.id, req.user.id));
 
-    const userResult = await db.select().from(users).where(eq(users.id, req.user.id)).limit(1);
-    customer.user = userResult[0];
+    // If user is adding an email for the first time
+    if (email) {
+      const userResult = await db.select().from(users).where(eq(users.id, req.user.id)).limit(1);
+      const user = userResult[0];
+      
+      if (!user.email) {
+        // Check if email is already taken by another user
+        const existingEmailResult = await db.select().from(users).where(eq(users.email, email)).limit(1);
+        if (existingEmailResult[0]) {
+          return res.status(400).json({ error: 'Email already registered to another account' });
+        }
+        
+        await db.update(users)
+          .set({ email, emailVerified: false })
+          .where(eq(users.id, req.user.id));
+      } else if (user.email !== email) {
+        // User is changing their email
+        const existingEmailResult = await db.select().from(users).where(eq(users.email, email)).limit(1);
+        if (existingEmailResult[0]) {
+          return res.status(400).json({ error: 'Email already registered to another account' });
+        }
+        
+        await db.update(users)
+          .set({ email, emailVerified: false })
+          .where(eq(users.id, req.user.id));
+      }
+    }
+
+    const updatedUserResult = await db.select().from(users).where(eq(users.id, req.user.id)).limit(1);
+    customer.user = updatedUserResult[0];
 
     res.json(customer);
   } catch (error) {
@@ -66,7 +94,7 @@ const uploadCustomerProfilePicture = async (req, res) => {
       .set({ profilePicture: profilePictureUrl })
       .where(eq(customers.userId, req.user.id))
       .returning();
-    
+
     const customer = customerResult[0];
 
     const userResult = await db.select().from(users).where(eq(users.id, req.user.id)).limit(1);
@@ -83,8 +111,31 @@ const uploadCustomerProfilePicture = async (req, res) => {
   }
 };
 
+const deleteCustomerProfilePicture = async (req, res) => {
+  try {
+    const customerResult = await db.update(customers)
+      .set({ profilePicture: null })
+      .where(eq(customers.userId, req.user.id))
+      .returning();
+
+    const customer = customerResult[0];
+
+    const userResult = await db.select().from(users).where(eq(users.id, req.user.id)).limit(1);
+    customer.user = userResult[0];
+
+    res.json({
+      message: 'Profile picture deleted successfully',
+      customer
+    });
+  } catch (error) {
+    console.error('Delete customer profile picture error:', error);
+    res.status(500).json({ error: 'Failed to delete profile picture' });
+  }
+};
+
 module.exports = {
   getCustomerProfile,
   updateCustomerProfile,
-  uploadCustomerProfilePicture
+  uploadCustomerProfilePicture,
+  deleteCustomerProfilePicture
 };

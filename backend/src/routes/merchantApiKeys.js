@@ -4,6 +4,7 @@ const db = require('../db/index');
 const { eq, desc } = require('drizzle-orm');
 const { apiKeys, merchants } = require('../db/schema');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 
 const router = express.Router();
 
@@ -62,12 +63,13 @@ router.post('/', merchantAuth, async (req, res) => {
 
     const key = generateApiKey();
     const secret = generateApiSecret();
+    const hashedSecret = await bcrypt.hash(secret, 10);
     const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000 * 60 * 60 * 24) : null;
 
     const newKey = await db.insert(apiKeys).values({
       merchantId: merchant.id,
       key,
-      secret,
+      secret: hashedSecret,
       name,
       permissions: JSON.stringify(permissions),
       isActive: true,
@@ -216,15 +218,17 @@ router.post('/:id/regenerate', merchantAuth, async (req, res) => {
     }
 
     const newSecret = generateApiSecret();
+    const hashedSecret = await bcrypt.hash(newSecret, 10);
 
     const updatedKey = await db.update(apiKeys)
-      .set({ secret: newSecret })
+      .set({ secret: hashedSecret })
       .where(eq(apiKeys.id, id))
       .returning();
 
     res.json({
       message: 'API key secret regenerated successfully',
       apiKey: updatedKey[0],
+      // Only show secret once during regeneration
       secret: newSecret
     });
   } catch (error) {
