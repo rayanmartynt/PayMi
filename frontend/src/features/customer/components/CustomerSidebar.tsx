@@ -66,9 +66,10 @@ export function CustomerSidebar() {
                   <Image
                     src={darkMode ? "/Dark mode logo.png" : "/Light mode logo.png"}
                     alt="PayMi Logo"
-                    width={60}
-                    height={20}
+                    width={120}
+                    height={40}
                     priority
+                    className="h-10 w-auto"
                   />
                 </div>
                 <span className="text-xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">

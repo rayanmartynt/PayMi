@@ -182,21 +182,44 @@ router.get('/transactions', adminAuth, async (req, res) => {
 // Get all users
 router.get('/users', adminAuth, async (req, res) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 20, role, search } = req.query;
     const offset = (page - 1) * limit;
+
+    let conditions = [];
+    if (role) conditions.push(eq(users.role, role));
+    if (search) {
+      conditions.push(sql`${users.name} ILIKE ${`%${search}%`} OR ${users.email} ILIKE ${`%${search}%`}`);
+    }
+    
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     const usersResult = await db.select()
       .from(users)
+      .where(whereClause)
       .orderBy(desc(users.createdAt))
       .limit(parseInt(limit))
       .offset(offset);
 
     // Count total
-    const countResult = await db.select({ count: users.id }).from(users);
+    const countResult = await db.select({ count: users.id }).from(users).where(whereClause);
     const total = countResult.length;
 
+    // Get merchant and customer data for each user
+    const userIds = usersResult.map(u => u.id);
+    const merchantsData = await db.select().from(merchants).where(sql`${merchants.userId} = ANY(${userIds})`);
+    const customersData = await db.select().from(customers).where(sql`${customers.userId} = ANY(${userIds})`);
+    
+    const merchantMap = new Map(merchantsData.map(m => [m.userId, m]));
+    const customerMap = new Map(customersData.map(c => [c.userId, c]));
+
+    const usersWithProfiles = usersResult.map(u => ({
+      ...u,
+      merchant: merchantMap.get(u.id) || null,
+      customer: customerMap.get(u.id) || null
+    }));
+
     res.json({
-      users: usersResult,
+      users: usersWithProfiles,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),

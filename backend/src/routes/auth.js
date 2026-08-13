@@ -359,7 +359,7 @@ router.post('/verify-email-public',
       .where(eq(users.id, user.id));
 
     // Generate tokens after verification
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '15m' });
+    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '30m' });
     const refreshToken = generateRefreshToken();
 
     await db.insert(refreshTokens).values({
@@ -516,7 +516,11 @@ router.post('/complete-registration-phone',
       });
     } else {
       await db.insert(customers).values({
-        userId: user.id
+        userId: user.id,
+        name: pendingData.name,
+        phone: pendingData.phoneNumber || null,
+        balance: '0',
+        kycVerified: false
       });
     }
 
@@ -527,7 +531,7 @@ router.post('/complete-registration-phone',
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRE || '15m' }
+      { expiresIn: process.env.JWT_EXPIRE || '30m' }
     );
 
     const refreshToken = generateRefreshToken();
@@ -547,6 +551,17 @@ router.post('/complete-registration-phone',
       req.ip,
       req.headers['user-agent']
     );
+
+    // Send welcome email if email is provided
+    if (user.email && !user.email.includes('@temp.com')) {
+      try {
+        const emailService = require('../services/email');
+        await emailService.sendWelcomeEmail(user.email, user.name);
+      } catch (emailError) {
+        console.error('Failed to send welcome email:', emailError);
+        // Don't fail registration if email fails
+      }
+    }
 
     res.json({
       message: 'Registration successful',
@@ -622,7 +637,11 @@ router.post('/complete-registration-email',
       });
     } else {
       await db.insert(customers).values({
-        userId: user.id
+        userId: user.id,
+        name: pendingData.name,
+        phone: pendingData.phoneNumber || null,
+        balance: '0',
+        kycVerified: false
       });
     }
 
@@ -633,7 +652,7 @@ router.post('/complete-registration-email',
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRE || '15m' }
+      { expiresIn: process.env.JWT_EXPIRE || '30m' }
     );
 
     const refreshToken = generateRefreshToken();
@@ -654,6 +673,15 @@ router.post('/complete-registration-email',
       req.headers['user-agent']
     );
 
+    // Send welcome email
+    try {
+      const emailService = require('../services/email');
+      await emailService.sendWelcomeEmail(user.email, user.name);
+    } catch (emailError) {
+      console.error('Failed to send welcome email:', emailError);
+      // Don't fail registration if email fails
+    }
+
     res.json({
       message: 'Registration successful',
       token,
@@ -669,7 +697,60 @@ router.post('/complete-registration-email',
     });
   } catch (error) {
     console.error('Complete registration email error:', error);
-    res.status(500).json({ error: 'Registration failed' });
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      detail: error.detail
+    });
+    res.status(500).json({ error: 'Registration failed', details: error.message });
+  }
+});
+
+// Resend Verification Code (public endpoint for registration flow)
+router.post('/resend-verification-public',
+  authLimiter,
+  [
+    body('tempToken').notEmpty().withMessage('Temporary token is required')
+  ],
+  async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { tempToken } = req.body;
+
+    // Retrieve pending registration data
+    const pendingData = global.pendingRegistrations?.[tempToken];
+    if (!pendingData) {
+      return res.status(400).json({ error: 'Invalid or expired registration token' });
+    }
+
+    // Generate new verification code
+    const verificationCode = generateVerificationCode();
+    const verificationCodeExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+    // Update pending data with new code
+    pendingData.verificationCode = verificationCode;
+    pendingData.verificationCodeExpires = verificationCodeExpires;
+    global.pendingRegistrations[tempToken] = pendingData;
+
+    // Send verification code
+    if (pendingData.verificationMethod === 'email') {
+      await sendVerificationEmail(pendingData.email, verificationCode);
+    } else {
+      await smsService.sendVerificationCode(pendingData.phoneNumber, verificationCode);
+    }
+
+    res.json({
+      message: 'Verification code sent successfully',
+      contact: pendingData.verificationMethod === 'email' ? pendingData.email : pendingData.phoneNumber
+    });
+  } catch (error) {
+    console.error('Resend verification public error:', error);
+    res.status(500).json({ error: 'Failed to resend verification code' });
   }
 });
 
@@ -806,7 +887,7 @@ router.post('/verify-phone',
 });
 
 // Login
-router.post('/login', 
+router.post('/login',
   authLimiter,
   [
     body('identifier').notEmpty().withMessage('Email or phone number is required'),
@@ -816,6 +897,10 @@ router.post('/login',
   async (req, res) => {
   try {
     const { identifier, password, twoFactorToken } = req.body;
+
+    if (!identifier) {
+      return res.status(400).json({ error: 'Email or phone number is required' });
+    }
 
     // Check if identifier is email or phone number
     const isEmail = identifier.includes('@');
@@ -839,8 +924,8 @@ router.post('/login',
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Check if phone is verified (primary verification method)
-    if (!user.phoneVerified) {
+    // Check if phone is verified (only if user has a phone number)
+    if (user.phoneNumber && !user.phoneVerified) {
       return res.status(403).json({ 
         error: 'Phone not verified. Please verify your phone first.',
         requiresPhoneVerification: true,
@@ -874,7 +959,7 @@ router.post('/login',
     // Allow login without 2FA if user hasn't set it up yet
     // User will be prompted to set up 2FA after first login
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '15m' });
+    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '30m' });
     const refreshToken = generateRefreshToken();
 
     // Save refresh token to database (reduced to 24 hours)
@@ -966,7 +1051,7 @@ router.post('/refresh',
     }
 
     // Generate new access token
-    const newToken = jwt.sign({ userId: storedToken.userId }, process.env.JWT_SECRET, { expiresIn: '15m' });
+    const newToken = jwt.sign({ userId: storedToken.userId }, process.env.JWT_SECRET, { expiresIn: '30m' });
 
     // Generate new refresh token and invalidate old one (24 hours)
     const newRefreshToken = generateRefreshToken();

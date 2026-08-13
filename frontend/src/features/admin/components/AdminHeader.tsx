@@ -22,9 +22,9 @@ export function AdminHeader() {
         <Image
           src={darkMode ? "/Dark mode logo.png" : "/Light mode logo.png"}
           alt="PayMi Logo"
-          width={60}
-          height={20}
-          priority
+          width={120}
+          height={40}
+          className="h-10 w-auto"
         />
       </div>
 

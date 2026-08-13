@@ -1,7 +1,7 @@
 const express = require('express');
 const { customerAuth } = require('../middleware/auth');
 const db = require('../db/index');
-const { eq, and, or, desc } = require('drizzle-orm');
+const { eq, and, or, desc, like, ne } = require('drizzle-orm');
 const { contacts, customers, users } = require('../db/schema');
 const smsService = require('../services/sms');
 
@@ -77,6 +77,47 @@ router.post('/sync', customerAuth, async (req, res) => {
   } catch (error) {
     console.error('Sync contacts error:', error);
     res.status(500).json({ error: 'Failed to sync contacts' });
+  }
+});
+
+// Get all PayMi users
+router.get('/paymi-users', customerAuth, async (req, res) => {
+  try {
+    const { search } = req.query;
+
+    // Get all customers with their user information, excluding current user
+    let query = db.select({
+      id: customers.id,
+      userId: customers.userId,
+      name: users.name,
+      phoneNumber: users.phoneNumber,
+      email: users.email,
+      createdAt: customers.createdAt
+    })
+    .from(customers)
+    .innerJoin(users, eq(customers.userId, users.id))
+    .where(ne(customers.userId, req.user.id)); // Exclude current user
+
+    // Apply search filter if provided
+    if (search) {
+      query = query.where(and(
+        ne(customers.userId, req.user.id),
+        or(
+          like(users.name, `%${search}%`),
+          like(users.phoneNumber, `%${search}%`),
+          like(users.email, `%${search}%`)
+        )
+      ));
+    }
+
+    const paymiUsers = await query
+      .orderBy(desc(customers.createdAt))
+      .limit(50); // Limit to 50 users for performance
+
+    res.json(paymiUsers);
+  } catch (error) {
+    console.error('Get PayMi users error:', error);
+    res.status(500).json({ error: 'Failed to get PayMi users' });
   }
 });
 

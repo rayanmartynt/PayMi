@@ -51,7 +51,7 @@ export function Hero() {
 
             <h1 className="text-4xl lg:text-6xl font-bold mb-6 leading-tight tracking-tight text-foreground">
               Accept Payments in{' '}
-              <span className="bg-gradient-to-r from-[#4A7FA7] to-[#1A3D63] bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-[green] to-[blue] bg-clip-text text-transparent">
                 Sierra Leone
               </span>
             </h1>

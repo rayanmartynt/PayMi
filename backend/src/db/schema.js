@@ -548,6 +548,105 @@ const auditLogs = pgTable('audit_logs', {
   timestampIdx: index('audit_logs_timestamp_idx').on(table.timestamp),
 }));
 
+// Contacts table for synced phone contacts
+const contacts = pgTable('contacts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  phoneNumber: varchar('phone_number', { length: 20 }).notNull(),
+  isPayMiUser: boolean('is_paymi_user').default(false).notNull(),
+  matchedCustomerId: uuid('matched_customer_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  userIdIdx: index('contacts_user_id_idx').on(table.userId),
+  phoneNumberIdx: index('contacts_phone_number_idx').on(table.phoneNumber),
+  matchedCustomerIdIdx: index('contacts_matched_customer_id_idx').on(table.matchedCustomerId),
+}));
+
+// Friendships table
+const friendships = pgTable('friendships', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  requesterId: uuid('requester_id').notNull(),
+  receiverId: uuid('receiver_id').notNull(),
+  status: varchar('status', { length: 20 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  requesterIdIdx: index('friendships_requester_id_idx').on(table.requesterId),
+  receiverIdIdx: index('friendships_receiver_id_idx').on(table.receiverId),
+  statusIdx: index('friendships_status_idx').on(table.status),
+  uniqueFriendship: index('friendships_unique_idx').on(table.requesterId, table.receiverId),
+}));
+
+// Chats table
+const chats = pgTable('chats', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  participant1Id: uuid('participant_1_id').notNull(),
+  participant2Id: uuid('participant_2_id').notNull(),
+  lastMessageAt: timestamp('last_message_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  participant1IdIdx: index('chats_participant_1_id_idx').on(table.participant1Id),
+  participant2IdIdx: index('chats_participant_2_id_idx').on(table.participant2Id),
+  uniqueChat: index('chats_unique_idx').on(table.participant1Id, table.participant2Id),
+}));
+
+// Messages table with encryption support
+const messages = pgTable('messages', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  chatId: uuid('chat_id').notNull(),
+  senderId: uuid('sender_id').notNull(),
+  encryptedContent: text('encrypted_content').notNull(),
+  iv: varchar('iv', { length: 255 }).notNull(),
+  read: boolean('read').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  chatIdIdx: index('messages_chat_id_idx').on(table.chatId),
+  senderIdIdx: index('messages_sender_id_idx').on(table.senderId),
+  readIdx: index('messages_read_idx').on(table.read),
+  createdAtIdx: index('messages_created_at_idx').on(table.createdAt),
+}));
+
+const moneyRequests = pgTable('money_requests', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  requesterId: uuid('requester_id').notNull(),
+  receiverId: uuid('receiver_id').notNull(),
+  amount: varchar('amount', { length: 50 }).notNull(),
+  currency: varchar('currency', { length: 10 }).default('SLE').notNull(),
+  description: text('description'),
+  status: varchar('status', { length: 20 }).default('PENDING').notNull(),
+  expiresAt: timestamp('expires_at'),
+  acceptedAt: timestamp('accepted_at'),
+  rejectedAt: timestamp('rejected_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  requesterIdIdx: index('money_requests_requester_id_idx').on(table.requesterId),
+  receiverIdIdx: index('money_requests_receiver_id_idx').on(table.receiverId),
+  statusIdx: index('money_requests_status_idx').on(table.status),
+}));
+
+const walletFunding = pgTable('wallet_funding', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  customerId: uuid('customer_id').notNull().references(() => customers.id),
+  amount: varchar('amount', { length: 50 }).notNull(),
+  currency: varchar('currency', { length: 10 }).default('SLE').notNull(),
+  provider: varchar('provider', { length: 50 }).notNull(),
+  phoneNumber: varchar('phone_number', { length: 20 }).notNull(),
+  transactionId: varchar('transaction_id', { length: 100 }),
+  status: varchar('status', { length: 50 }).default('PENDING').notNull(),
+  reference: varchar('reference', { length: 100 }).notNull(),
+  providerResponse: text('provider_response'),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  customerIdIdx: index('wallet_funding_customer_id_idx').on(table.customerId),
+  statusIdx: index('wallet_funding_status_idx').on(table.status),
+}));
+
 module.exports = {
   users,
   merchants,
@@ -583,5 +682,11 @@ module.exports = {
   adminFees,
   disputes,
   auditLogs,
+  contacts,
+  friendships,
+  chats,
+  messages,
+  moneyRequests,
+  walletFunding,
 };
 

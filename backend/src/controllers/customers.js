@@ -12,7 +12,14 @@ const getCustomerProfile = async (req, res) => {
     }
 
     const userResult = await db.select().from(users).where(eq(users.id, req.user.id)).limit(1);
-    customer.user = userResult[0];
+    const user = userResult[0];
+
+    // Flatten user verification fields into customer response
+    customer.emailVerified = user.emailVerified;
+    customer.phoneVerified = user.phoneVerified;
+    customer.phoneNumber = user.phoneNumber;
+    customer.email = user.email;
+    customer.user = user;
 
     res.json(customer);
   } catch (error) {

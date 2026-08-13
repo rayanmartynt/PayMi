@@ -43,7 +43,7 @@ export default function ChatPage() {
       
       const currentChat = chatsData.find((c: any) => c.chat.id === chatId)
       setChatInfo(currentChat)
-      setMessages(messagesData)
+      setMessages(messagesData as any[])
     } catch (error: any) {
       toast.error(error.message || 'Failed to load messages')
     } finally {
